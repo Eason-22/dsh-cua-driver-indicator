@@ -1,0 +1,61 @@
+{
+  "name": "dsh-cua-driver-indicator",
+  "version": "0.6.4",
+  "description": "Visibility layer for DSH's built-in Cua Driver channel (cua_driver_native__*): shows a non-activating screen-edge banner and pointer halo while the official tools operate the desktop, and turns a physical Esc into a real stop for that call series.",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "cua-driver",
+    "cua",
+    "computer-use",
+    "desktop",
+    "indicator",
+    "banner",
+    "esc-stop",
+    "windows"
+  ],
+  "type": "module",
+  "main": "lib/index.js",
+  "files": [
+    "lib/",
+    "scripts/",
+    "cordis.patch.yml",
+    "README.md",
+    "THIRD_PARTY.md",
+    "LICENSE",
+    "LICENSE-THIRD-PARTY"
+  ],
+  "exports": {
+    ".": "./lib/index.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "os": [
+    "win32"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "@deepseek-ai/schemastery": ">=3.18.1"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/schemastery": {
+      "optional": true
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Eason-22/dsh-cua-driver-indicator.git"
+  },
+  "homepage": "https://github.com/Eason-22/dsh-cua-driver-indicator#readme",
+  "bugs": {
+    "url": "https://github.com/Eason-22/dsh-cua-driver-indicator/issues"
+  }
+}

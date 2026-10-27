@@ -1,0 +1,17 @@
+# dsh-cua-driver-indicator — bundle patch layer
+#
+# Mounts one host plugin row. The plugin draws the takeover indicator for the
+# official built-in Cua Driver channel (cua_driver_native__*) and turns a
+# physical Esc into a real stop. It registers one model-visible tool,
+# computer_control_goal, which only declares the current banner goal and never
+# acts on the desktop.
+#
+# The row id is the plugin's own id (cua-driver-indicator); the name is the npm
+# package that provides it.
+
+- insert:
+    - id: cua-driver-indicator
+      name: 'dsh-cua-driver-indicator'
+      config:
+        indicatorText: 'DSH 正在控制电脑'
+        indicatorPosition: top
