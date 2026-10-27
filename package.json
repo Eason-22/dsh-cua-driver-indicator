@@ -1,6 +1,6 @@
 {
   "name": "dsh-cua-driver-indicator",
-  "version": "0.6.4",
+  "version": "0.6.5",
   "description": "Visibility layer for DSH's built-in Cua Driver channel (cua_driver_native__*): shows a non-activating screen-edge banner and pointer halo while the official tools operate the desktop, and turns a physical Esc into a real stop for that call series.",
   "keywords": [
     "dsh",
