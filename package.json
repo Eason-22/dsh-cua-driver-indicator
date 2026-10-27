@@ -20,6 +20,8 @@
   "files": [
     "lib/",
     "scripts/",
+    "scripts/check-package.mjs",
+    "docs/",
     "cordis.patch.yml",
     "README.md",
     "THIRD_PARTY.md",
