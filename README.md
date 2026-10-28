@@ -6,6 +6,23 @@
 知道控制从什么时候开始、到什么时候结束。这个插件只补这一层，**不参与任何控制动作**：
 不点鼠标、不选窗口，也不注册任何能动手的工具。
 
+## 第三方代码与致谢
+
+这个插件**不是从零写的**：Windows 侧的画面层来自一个第三方开源包。本节一次说清：哪些代码是我们自己的、哪些来自上游、我们动了什么，以及哪些上游代码我们没有拿。
+
+| 归属 | 内容 |
+| --- | --- |
+| **本插件自有** | `lib/` 全部——横幅组装（会话 + 动作 + 目标）、目标强制门（`computer_control_goal`）、Esc 停止逻辑与接管租约——以及插件自身的清单文件 |
+| **取自上游** | `scripts/windows-takeover.cs`、`scripts/windows-takeover.ps1`——Windows 侧画面层：屏幕边缘渐变 + 提示条 + 指针光环 + 一个低级键盘钩子（用来抓物理 Esc） |
+
+上游包是 **[`dsh-computer-use-win`](https://github.com/Yu-tao-Li/dsh-computer-use-win) v0.5.0**，作者 **Yu-tao-Li**，**MIT** 许可。上游的版权声明与许可原文逐字保留在 [LICENSE-THIRD-PARTY](LICENSE-THIRD-PARTY)，完整的署名说明在 [THIRD_PARTY.md](THIRD_PARTY.md)。
+
+**我们只改了一处**：新增 `allowInjectedStop` 开关（上游没有这个开关，默认关；本插件以 `true` 打开），让"被标记为注入式"的物理按键也能当停止键。原因是远程控制软件与输入法钩子会把用户的真实按键标记成注入式，而上游一律忽略注入事件——于是用户真按了 Esc 也停不下来。除此之外，两个文件就是上游 v0.5.0 的原文（取源时逐字节一致）：我们没有往文件头里塞任何注释或署名，署名统一放在本节与 [THIRD_PARTY.md](THIRD_PARTY.md) 两处。
+
+**上游那套桌面自动化后端我们一概没拿**：`mcp/server.mjs`、`scripts/windows-uia.ps1`、它的 24 个 MCP 工具、设置界面、对话操作记录等都没有复制。桌面操作全部交给 DSH 内置的 CUA Driver 通道（`cua_driver_native__*`）——本插件只画横幅、只提供停止信号，不碰任何桌面动作。
+
+---
+
 > **0.6.5：说明「横幅画在哪台机器上」**
 >
 > 用户问："WSL 不是 Windows 的子系统吗？要控制也只能控制 Windows 桌面吧？"

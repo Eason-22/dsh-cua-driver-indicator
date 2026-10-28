@@ -10,6 +10,37 @@ default), so you cannot tell when the desktop control starts or stops. This plug
 exactly that layer and **nothing else**: it never clicks, never selects a window, and registers
 no tool that can act.
 
+## Third-party code and credits
+
+This plugin is **not written from scratch**: the Windows picture layer comes from a
+third-party open-source package. This section says where that code came from, what we
+changed, and what we deliberately left behind.
+
+| Provenance | Files |
+| --- | --- |
+| **Ours** | Everything under `lib/`: the banner assembly (session + action + goal), the goal gate (`computer_control_goal`), and the Esc stop logic and takeover lease — plus the plugin's own manifest files. |
+| **Vendored from upstream** | `scripts/windows-takeover.cs` and `scripts/windows-takeover.ps1`: the Windows picture layer — the screen-edge glow, the banner strip, the pointer halo, and a low-level keyboard hook (used to catch a physical Esc). |
+
+The upstream project is **[`dsh-computer-use-win`](https://github.com/Yu-tao-Li/dsh-computer-use-win) v0.5.0**,
+by **Yu-tao-Li**, under the **MIT** license. The upstream copyright notice and the license
+text are reproduced verbatim in [LICENSE-THIRD-PARTY](LICENSE-THIRD-PARTY); the full
+attribution note lives in [THIRD_PARTY.md](THIRD_PARTY.md).
+
+**We changed exactly one thing:** a new `allowInjectedStop` switch (upstream has no such
+switch, it defaults to off, and this plugin turns it on) that lets a physical key press
+count as a stop signal even when Windows reports it as *injected*. Remote-control software
+and IME hooks flag the user's real keystrokes as injected, and upstream ignores every
+injected event — so a genuine Esc press would not stop anything. Apart from that patch the
+two files are the upstream v0.5.0 sources, byte for byte as they were fetched: we did not
+stamp a header comment into them, which is why the attribution lives in this section and in
+[THIRD_PARTY.md](THIRD_PARTY.md) instead.
+
+**What we did not take:** none of the upstream desktop-automation backend — not
+`mcp/server.mjs`, not `scripts/windows-uia.ps1`, not its 24 MCP tools, not its settings UI
+or its conversation log. Every desktop action goes through DSH's built-in CUA Driver
+channel (`cua_driver_native__*`). This plugin only paints the banner and provides the stop
+signal; it never acts on the desktop itself.
+
 ---
 
 ## What it does
