@@ -1,0 +1,41 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node:
+          - '20'
+          - '22'
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      # The plugin has no runtime dependencies: the tests import the pure logic
+      # modules only, so there is nothing to install before running them.
+      - name: Syntax check
+        run: |
+          node --check lib/index.js
+          node --check lib/goal.mjs
+          node --check lib/series.mjs
+
+      - name: Goal, banner and gate tests
+        run: node --test tests/goal.test.mjs
+
+      - name: Lease and stop tests
+        run: node --test tests/series.test.mjs
