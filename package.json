@@ -1,6 +1,6 @@
 {
   "name": "dsh-cua-driver-indicator",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Visibility layer for DSH's built-in Cua Driver channel (cua_driver_native__*): shows a non-activating screen-edge banner and pointer halo while the official tools operate the desktop, turns a physical Esc into a real stop, and when that official channel is missing it asks in the web UI whether to install it (one-click install through the host's own pipeline, a real verification afterwards, and a restart left to the user). Windows only.",
   "keywords": [
     "dsh",
@@ -27,8 +27,10 @@
     "scripts/",
     "scripts/check-package.mjs",
     "docs/",
+    "locale/",
     "cordis.patch.yml",
     "README.md",
+    "README.zh.md",
     "THIRD_PARTY.md",
     "LICENSE",
     "LICENSE-THIRD-PARTY",
@@ -37,6 +39,7 @@
   "exports": {
     ".": "./lib/index.js",
     "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
     "./package.json": "./package.json"
   },
   "dsh": {

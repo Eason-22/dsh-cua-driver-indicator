@@ -3,7 +3,9 @@
 感谢你愿意给 `dsh-cua-driver-indicator` 提 PR。这份文档讲三件事：**代码长什么样**、
 **怎么跑测试**、**改动要守什么规矩**、**怎么发一个版本**。
 
-> 中文为主；英文读者看 [README.en.md](README.en.md)。
+> 这份文档是中文的。默认正文 [README.md](README.md) 是**英文**，中文版在
+> [README.zh.md](README.zh.md)；[README.en.md](README.en.md) 现在只是一页「正文已迁到
+> README.md」的说明页。
 
 ## 目录结构
 

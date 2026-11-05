@@ -1,0 +1,52 @@
+{
+  "missing": {
+    "title": "This plugin needs DSH's official computer-control plugin to work",
+    "body": [
+      "It looks like DSH's official computer-control plugin is not installed (or not enabled).",
+      "This plugin is only the display of that channel: the on-screen banner and the Esc interrupt are driven by it. Without it this plugin cannot do anything at all - not \"a little less\", but nothing to show.",
+      "After the install, DSH has to be restarted once for it to take effect."
+    ],
+    "install": "Install the official computer-control plugin",
+    "dismiss": "Not now",
+    "declined": "Skipped. This plugin is unavailable for now; it will ask again on the next start."
+  },
+  "disabled": {
+    "title": "The official computer-control plugin is installed, but not enabled",
+    "body": "It sits in the plugin list as \"disabled\", so the official tools do not appear - and neither does the takeover banner.",
+    "note": "This plugin stays unavailable until you enable it.",
+    "action": "Enable it in the settings",
+    "hint": "(Enable it in the plugin list of the settings page; this button does the same thing.)"
+  },
+  "inactive": {
+    "title": "The official computer-control plugin is installed, but its tools did not appear",
+    "body": "Both official rows are there and both are enabled, but the official tools (cua_driver_native__*) were not registered.",
+    "note": "A version mismatch is the usual reason. Restarting the host usually fixes it.",
+    "restart": "Restart now",
+    "noAutorestart": "There is no auto-restart plugin on this machine, so the restart is yours to do."
+  },
+  "text": {
+    "restartHint": "DSH has to be restarted once for it to take effect.",
+    "withCode": "({code})",
+    "missing": "This text is missing."
+  },
+  "install": {
+    "done": "It is installed - DSH has to be restarted once for it to take effect.",
+    "partial": "Partly installed: the two official plugin rows are not both in place yet; look again after the restart.",
+    "failed": "The install did not work.",
+    "requestFailed": "The install request did not reach the host: {error}"
+  },
+  "enable": {
+    "done": "It is enabled now.",
+    "failed": "Enabling it did not work.",
+    "requestFailed": "The enable request did not reach the host: {error}"
+  },
+  "restart": {
+    "done": "A restart has been queued.",
+    "failed": "The restart could not be queued.",
+    "requestFailed": "The restart request did not reach the host: {error}"
+  },
+  "version": {
+    "installed": "Installed official package version: {version}",
+    "host": "Host version: {version}"
+  }
+}

@@ -1,366 +1,313 @@
 # dsh-cua-driver-indicator
 
-给 **DSH 官方内置的 Cua Driver 通道**（`cua_driver_native__*`）补上"看得见 + 能喊停"这一层。
+English | [中文](README.zh.md)
 
-官方 CUA Driver 通道本身没有任何屏幕提示（只有一个默认关闭的指针浮层），所以你无从
-知道控制从什么时候开始、到什么时候结束。这个插件只补这一层，**不参与任何控制动作**：
-不点鼠标、不选窗口，也不注册任何能动手的工具。
+> **0.7.1: bilingual UI, English-first readme**
+>
+> - **The UI follows the host language**: the panel reads the host's locale service first,
+>   then the browser language, and falls back to **Chinese** when neither is available. The
+>   Chinese wording is unchanged; English wording was added for every visible string.
+> - **This readme is now the English one**; the Chinese text lives in
+>   [README.zh.md](README.zh.md). Both are cross-linked at the top.
+>
+> Everything below is the 0.7.0 feature set, unchanged in behaviour.
+>
+> > **0.7.0: asks whether to install the official computer-control plugin**
+>
+> A real-machine report: "I installed this plugin and no banner appeared." The reason was
+> that **the two official plugins were not installed at all** - this plugin only draws the
+> banner FOR that channel, so with the channel missing there is nothing to draw.
+>
+> - **Five states** (`lib/provider.mjs`, pure logic, unit-testable): `available` /
+>   `installed-disabled` / `installed-inactive` / `missing` / `unknown`. The state is
+>   **re-read live**, never cached from start-up.
+> - **A popup asks you** when the state is `missing`: a title that says this plugin needs
+>   DSH's official "computer control" plugin, three sentences of body text, and the buttons
+>   "Install the official computer-control plugin" / "Not now". Choosing "Not now" leaves one
+>   line in the corner: the plugin is unavailable for now and will ask again next start.
+>   (The shipped wording is Chinese - see [README.zh.md](README.zh.md) for the exact text.)
+> - **One-click install**: it goes through **the host's own plugin pipeline** and pulls
+>   whatever the official packages currently publish (no official package version is ever
+>   written into this repository).
+> - **The install is verified for real**: the host's plugin list is read again - the install
+>   counts as done only when **both rows are there AND both are enabled**; one row alone
+>   does not count.
+> - **Four different answers**: installed / half-installed (one row) / overridden by another
+>   configuration layer / failed - each one says its own thing instead of one vague
+>   "it worked".
+> - **The restart is the user's call**: the plugin only says DSH has to be restarted once;
+>   when the host has the auto-restart plugin, the `installed-inactive` card also offers an
+>   "Restart now" button.
+> - **Windows only**: the native implementation of the official channel is the Windows Cua
+>   Driver; **a hosted instance inside WSL, macOS and Linux are not supported, and this
+>   plugin is not tested there**.
 
-## 第三方代码与致谢
+Adds the "you can see it, and you can stop it" layer on top of **DSH's official built-in
+Cua Driver channel** (`cua_driver_native__*`).
 
-这个插件**不是从零写的**：Windows 侧的画面层来自一个第三方开源包。本节一次说清：哪些代码是我们自己的、哪些来自上游、我们动了什么，以及哪些上游代码我们没有拿。
+The official channel draws no banner of its own (it only has a pointer overlay that is off by
+default), so you cannot tell when the desktop control starts or stops. This plugin supplies
+exactly that layer and **nothing else**: it never clicks, never selects a window, and registers
+no tool that can act.
 
-| 归属 | 内容 |
+## Third-party code and credits
+
+This plugin is **not written from scratch**: the Windows picture layer comes from a
+third-party open-source package. This section says where that code came from, what we
+changed, and what we deliberately left behind.
+
+| Provenance | Files |
 | --- | --- |
-| **本插件自有** | `lib/` 全部——横幅组装（会话 + 动作 + 目标）、目标强制门（`computer_control_goal`）、Esc 停止逻辑与接管租约——以及插件自身的清单文件 |
-| **取自上游** | `scripts/windows-takeover.cs`、`scripts/windows-takeover.ps1`——Windows 侧画面层：屏幕边缘渐变 + 提示条 + 指针光环 + 一个低级键盘钩子（用来抓物理 Esc） |
+| **Ours** | Everything under `lib/`: the banner assembly (session + action + goal), the goal gate (`computer_control_goal`), and the Esc stop logic and takeover lease — plus the plugin's own manifest files. |
+| **Vendored from upstream** | `scripts/windows-takeover.cs` and `scripts/windows-takeover.ps1`: the Windows picture layer — the screen-edge glow, the banner strip, the pointer halo, and a low-level keyboard hook (used to catch a physical Esc). |
 
-上游包是 **[`dsh-computer-use-win`](https://github.com/Yu-tao-Li/dsh-computer-use-win) v0.5.0**，作者 **Yu-tao-Li**，**MIT** 许可。上游的版权声明与许可原文逐字保留在 [LICENSE-THIRD-PARTY](LICENSE-THIRD-PARTY)，完整的署名说明在 [THIRD_PARTY.md](THIRD_PARTY.md)。
+The upstream project is **[`dsh-computer-use-win`](https://github.com/Yu-tao-Li/dsh-computer-use-win) v0.5.0**,
+by **Yu-tao-Li**, under the **MIT** license. The upstream copyright notice and the license
+text are reproduced verbatim in [LICENSE-THIRD-PARTY](LICENSE-THIRD-PARTY); the full
+attribution note lives in [THIRD_PARTY.md](THIRD_PARTY.md).
 
-**我们只改了一处**：新增 `allowInjectedStop` 开关（上游没有这个开关，默认关；本插件以 `true` 打开），让"被标记为注入式"的物理按键也能当停止键。原因是远程控制软件与输入法钩子会把用户的真实按键标记成注入式，而上游一律忽略注入事件——于是用户真按了 Esc 也停不下来。除此之外，两个文件就是上游 v0.5.0 的原文（取源时逐字节一致）：我们没有往文件头里塞任何注释或署名，署名统一放在本节与 [THIRD_PARTY.md](THIRD_PARTY.md) 两处。
+**We changed exactly one thing:** a new `allowInjectedStop` switch (upstream has no such
+switch, it defaults to off, and this plugin turns it on) that lets a physical key press
+count as a stop signal even when Windows reports it as *injected*. Remote-control software
+and IME hooks flag the user's real keystrokes as injected, and upstream ignores every
+injected event — so a genuine Esc press would not stop anything. Apart from that patch the
+two files are the upstream v0.5.0 sources, byte for byte as they were fetched: we did not
+stamp a header comment into them, which is why the attribution lives in this section and in
+[THIRD_PARTY.md](THIRD_PARTY.md) instead.
 
-**上游那套桌面自动化后端我们一概没拿**：`mcp/server.mjs`、`scripts/windows-uia.ps1`、它的 24 个 MCP 工具、设置界面、对话操作记录等都没有复制。桌面操作全部交给 DSH 内置的 CUA Driver 通道（`cua_driver_native__*`）——本插件只画横幅、只提供停止信号，不碰任何桌面动作。
+**What we did not take:** none of the upstream desktop-automation backend — not
+`mcp/server.mjs`, not `scripts/windows-uia.ps1`, not its 24 MCP tools, not its settings UI
+or its conversation log. Every desktop action goes through DSH's built-in CUA Driver
+channel (`cua_driver_native__*`). This plugin only paints the banner and provides the stop
+signal; it never acts on the desktop itself.
 
 ---
 
-> **0.7.0：缺官方电脑控制插件时，弹窗问你要不要装**
->
-> 用户实机反馈："装了这个插件，横幅没出来。"——查下去是**官方那两行插件根本没装**，
-> 而本插件只画那条通道的提示条：通道不在，就没有东西可画。
->
-> - **五态检测**（`lib/provider.mjs`，纯逻辑可单测）：`available` / `installed-disabled` /
->   `installed-inactive` / `missing` / `unknown`。状态**实时复检**，不是启动时缓存的。
-> - **`missing` 时弹窗问你**（用户确认后的文案）：标题「本插件需要官方的「电脑控制」插件
->   才能工作」，正文三句，按钮「安装官方电脑控制插件」/「暂不安装」；选了「暂不安装」
->   → 「已跳过。本插件当前不可用，下次启动会再提醒一次。」
-> - **一键安装**：走**宿主自己的插件管线**，现拉官方当前发布的版本（代码里不写死任何
->   官方包的精确版本号）。
-> - **装完真验**：重读宿主的插件清单——**两行都在、且都是启用状态**才算装好；只装上一行
->   不算。
-> - **四种说法分开讲**：装好了 / 只装上一行（半装）/ 改动被另一层配置覆盖 / 安装失败，
->   各有自己的提示，不含糊成一句"装好了"。
-> - **重启交给用户**：装完提示需要重启一次 DSH 才生效；宿主上装了自动重启插件时，
->   `installed-inactive` 卡片会给「立即重启」按钮。
-> - **仅 Windows**：官方通道的原生实现是 Windows 上的 Cua Driver；
->   **WSL 托管实例 / macOS / Linux 不支持，本插件也不在那些平台上实测**。
+## What it does
 
-> **0.6.5：说明「横幅画在哪台机器上」**
->
-> 用户问："WSL 不是 Windows 的子系统吗？要控制也只能控制 Windows 桌面吧？"
->
-> - 横幅由**宿主在 Windows 侧**绘制（`powershell.exe` + WinForms），所以它出现在
->   **运行 DSH 的那台机器**上；它不是"画在远端"，也不是网页里的元素。
-> - **浏览器打开的 web 界面**（Windows 上跑 `dsh web`）→ 连的是同一个 Windows 宿主
->   → 横幅照常显示，功能与桌面应用完全一致。
-> - **WSL 里的 DSH** → 宿主是 Linux：官方 Cua Driver 在那里驱动的是 **WSLg 的虚拟
->   显示**（跑在 WSL 里的 Linux 图形程序），**碰不到真正的 Windows 窗口**；而横幅要
->   画给你看，同样得由 Windows 侧的进程来画。结论：WSL 里的实例既控制不了你的 Windows
->   电脑，也画不出横幅。
-> - 因此本包标注 `"os": ["win32"]`：在 Linux 上 pnpm 直接拒装（EBADPLATFORM），
->   而不是"装了没反应"。
+1. **A banner.** The first time the official channel really operates the desktop, a
+   non-activating, click-through strip appears at the top (or bottom) of the screen, and a
+   halo plus the DSH badge appears next to the pointer.
+2. **A four-segment banner.** The strip reads
+   `DSH 正在控制电脑 · 会话《<session title>》· <what it is doing> · 目标：<goal>`
+   (see [Reading the banner](#reading-the-banner)).
+3. **It goes away again.** When the turn ends, or 30 seconds after the last desktop call, the
+   strip fades out.
+4. **Esc really stops.** A physical Esc aborts the desktop call that is in flight and blocks
+   the remaining desktop calls of that turn (the next turn works normally).
+5. **Say the goal before touching the screen.** A session that has not declared a goal is sent
+   back once, with an error the model can act on (see
+   [The goal gate](#the-goal-gate)).
 
-> **0.6.4：团队/子代理会话的横幅身份 + 机器话标题不进横幅**
->
-> 用户实机反馈：横幅显示成
-> `DSH 正在控制电脑 · 会话《AgentTeams automatic task ass...》· 正在操作桌面 · 目标：…`
-> 并问"这个应该是子智能体吧？怎么样没有子智能体的提示啊？"。
->
-> - **根因不是"认不出团队会话"，而是"标题永远压过身份"**。`sessionLabel()` 原来
->   一拿到标题就直接返回，「子代理」那条回落分支根本走不到。团队成员会话的标题
->   是它的第一条 user 消息（AgentTeams 派发文本）自动生成的，于是机器话原样上屏。
-> - **`isDerivedSession(session)`**（`lib/goal.mjs`，零 import）：按宿主 `SessionHeader`
->   里真实存在的三个信号判断"这是子会话"——`origin === 'subagent'`、
->   `delegationDepth > 0`、`parentSession` 非空。**实测**：AgentTeams 成员会话的
->   持久化头是 `origin:"subagent", delegationDepth:1, parentSession:<队长会话>`；
->   普通顶层会话是 `delegationDepth:0` 且无 `parentSession`。三个信号都收，
->   宿主只标一个也认得出。
-> - **`isMachineTitle(title)`**：机器话判定**复用**本文件已有的词表
->   （`MACHINE_TEXT_PREFIXES` / `MACHINE_TEXT_FRAGMENTS`，也就是
->   `isHumanInstructionText` 背后的那份），**没有第二份词表**。宿主会把标题截断，
->   所以"以已知开头开头"的半截也算机器话。
-> - **回落文案**：团队/子代理会话 → 「子代理任务」；普通会话 → 「主会话」；
->   人类标题照常显示（子代理会话标题是人话时仍然显示标题）。
-> - 判定全在 `lib/goal.mjs`，`lib/index.js` **一行没改**（横幅本来就调
->   `sessionLabel()`）。闸门三条语义、Esc、租约、动作词、问句排除全部不变。
+### Reading the banner
 
-> **0.6.3：强制门的"接线"整体搬进被测单元**
->
-> 0.6.1 把**判定规则**抽成了纯函数，但评审指出一个缝隙：判定规则测试全绿，并不代表
-> **接线**是对的。接线（读声明目标、读本轮拦截记录、决定放行还是退回、**记住本轮**、
-> **取轮次**）当时还在 `lib/index.js` 里，那里没有宿主就跑不了测试——于是把
-> `alreadyBlocked` 写成常量 `false`、或把 `turn` 传丢，**整套测试仍然全绿**，闸门却
-> 退化成"永久拦"（死锁）。0.6.2 把判定收进纯函数，但"记住本轮"还留在 `index.js`，
-> 评审仍然判 needs_revision。这一版把它彻底搬进去。
->
-> - **`evaluateGoalGate(store, states, context)`**（`lib/goal.mjs`，零 import）：
->   读声明目标 + 读本轮拦截记录 → `{ decision, declared, alreadyBlocked, nextState,
->   stateKey, missingTurn }`。它**只读**状态容器，不写。
-> - **`runGoalGate(store, states, context)`**：评估之后，**被拦时由它自己**
->   `states.set(stateKey, nextState)`——"记住本轮"这一步从此在被测单元里，
->   `lib/index.js` 再也没有任何 `states.set(...)`。放行时容器不动。返回
->   `{ decision, declared, alreadyBlocked, stateKey, recorded, missingTurn, state }`。
-> - **`lib/index.js` 只剩三件事**：调 `runGoalGate` → 按 `decision` 抛错或放行 →
->   必要时打一条 warn。它不再拼 `alreadyBlocked`、不再判断 `decision`、不再写状态。
-> - **轮次缺失显式处理（fail-open）**：`turn` 为 `undefined`/`null` 时闸门**放行**并
->   带上 `missingTurn: true`，`index.js` 见到这个标记就打一条 warn。理由：拿不到轮次
->   就永久拦 = 死锁，这是用户明确不能接受的；宁可这一次闸门不生效，也不能把桌面锁死。
->   同时 `execTurn(exec)` 把"轮次怎么从宿主对象里读"这条规则也搬进了 `lib/goal.mjs`，
->   插件与闸门不会再各算各的。
-> - **键统一**：`gateStateKey(sessionId, agentId)` 是闸门状态键的**唯一入口**，
->   写入（`runGoalGate`）与清理（`clearGate`）走同一个函数，两边不会再指向不同的桶。
-> - **用例钉住接线**（`tests/goal.test.mjs`）：被拦时容器里真的出现这一轮
->   （`states.get('s1').blockedTurns` = `['1']`）、同轮重试放行、换轮再拦、缺轮次放行
->   且 `missingTurn` 为真、`turn=0` 也算一轮、状态容器不存在时放行……
->   外加 `GATE_ALLOW`/`GATE_BLOCK` 两个字面值断言。
-> - 只保留三条**极简源码断言**（它们只是补充防线，行为由上面的用例保证）：
->   `index.js` 必须调用 `runGoalGate(` 且不得出现 `evaluateGoalGate(` /
->   `decideGoalGate(` / `gateStateBlocks(` / `nextGateState(` / 任何 `states.set(`；
->   调用点的实参对象里必须带 `turn`；`clearGate` 必须用 `gateStateKey(`。
->
-> 闸门的**行为语义一点没变**（有声明放行 / 无声明首次拦 / 同轮重试放行 / 换轮重拦 /
-> 摘要不算声明），工具名 `computer_control_goal` 不变。唯一的差别在退化宿主上：
-> 轮次不可用时闸门选择**放行**而不是把桌面锁死。
+| Segment | What it means |
+| --- | --- |
+| **1. Head** — `DSH 正在控制电脑` | DSH is controlling your computer. The text is configurable (`indicatorText`). |
+| **2. Session** — `会话《<title>》` | *Who* is driving the desktop. The title comes from the host's session-title service and is cut at 30 characters. When the host has no title, or the title is machine text (for example an AgentTeams dispatch notice), the banner names the session kind instead: `主会话` (main session), `子代理` (subagent) or `子代理任务` (subagent task). |
+| **3. Action** — `正在点击` | *What* is happening right now. It is derived from the official tool that is currently running, so it is a fact, not a guess: `正在看屏幕` (reading the screen), `正在点击` (clicking), `正在输入` (typing), `正在按键` (pressing keys), `正在滚动` (scrolling), `正在拖拽` (dragging), `正在启动程序` (launching an app), `正在查看窗口` (inspecting a window), … A tool nobody mapped falls back to `正在操作桌面` (operating the desktop). **This segment is always there** — the banner never shows an English tool name and never leaves it empty. |
+| **4. Goal** — `目标：<goal>` | *Why*. Two sources: an automatic summary of your latest human instruction (the baseline), and the model's own report through the `computer_control_goal` tool, which wins for the session it was reported in and survives across turns until you change the goal or give a new instruction. **The whole segment disappears when there is no goal** — you never get a dangling `目标：`. Machine text (injected context, a dispatch notice, …) and questions or complaints are never used as a goal. |
 
-> **0.6.1：给强制门补上常驻回归测试，目标存储键统一**
->
-> 0.6.0 的强制门当时**没有任何常驻测试**——唯一证据在一个临时 harness 里，删了就没
-> 了。这一版把它钉死在仓库里：
->
-> - **闸门判定抽成纯函数**：判定规则搬到 `lib/goal.mjs`（零 import 的纯逻辑文件），
->   `lib/index.js` 只调用它，**不再内联第二份判定**——将来改一处不会漏另一处。
->   纯函数有两个：`decideGoalGate(hasDeclaredGoal, alreadyBlocked)` → `'allow'` /
->   `'block'`；`nextGateState(state, turn)` → 下一份拦截状态（不累积、不突变）。
-> - **五条语义各有常驻用例**（`tests/goal.test.mjs`）：
->
->   | 场景 | 期望 |
->   | --- | --- |
->   | 有模型声明的目标 | 放行 |
->   | 无声明 + 本轮首次 | 退回一次 |
->   | 无声明 + 本轮已退回过一次 | **放行**（不死锁的保险） |
->   | 换一轮（turn 变了） | 重新退回一次，拦截不累积 |
->   | 目标只是**自动摘要** | **仍然退回**（摘要不能绕过闸门） |
->
-> - **目标存储键统一成 `session.id`**：以前模型声明的目标按 `exec.agent.id` 存，横幅
->   却按 `session.id` 读——今天宿主强制两者相等所以没出事，但将来宿主放宽这条不变量时，
->   横幅会**静默退回自动摘要**。现在存与读都用 `session.id`，`agent/disposed` 两种
->   id 都清（防御）。
->
-> 工具名 **`computer_control_goal` 不变**，行为不变（强制门仍然只拦一次、拦截不占
-> 租约、按轮次重置）。
->
-> **0.6.0：加一道软强制门——动桌面前先说清目的**
->
-> 用户的要求原话：「不能让调用电脑控制的模型自己先说清楚目的才给调用吗？就是拦住
-> 一轮问目的，回答了才给用」。
->
-> - **第一次动桌面会被退回一次**：会话还没声明目标时，它第一次调官方桌面工具会被
->   拦下，模型收到一条可执行的错误：
->
->   ```
->   先调用 computer_control_goal 声明本轮目标（不超过 24 字，说清要做什么），用户屏幕上会显示它；声明之后重试这个桌面操作。
->   ```
->
->   模型声明完目标重试同一个调用就放行——**只拦一次，绝不死锁**。模型要是压根不
->   声明就重试，同一轮里的第二次调用也会放行，同时在日志里留一条 warn（带
->   sessionId 与工具名），方便事后排查。
-> - **拦截不占租约**：拦截发生在取得桌面租约**之前**，被拦的调用不碰租约、不影响
->   Esc 停止与空闲收起。拦截计数**按轮次重置**（`turn/end` 清空），下一轮重新算一次。
-> - **动作词不再留过期值**：一轮结束或序列结束（空闲 30 秒收起）时，「正在做什么」
->   回到「正在操作桌面」，横幅的会话名与目标段照常显示。
-> - **动作词补齐**：`move` / `move_cursor` → 正在移动鼠标，`bring_to_front` →
->   正在切换窗口，`start_recording` / `stop_recording` → 正在录制屏幕，剪贴板类 →
->   正在操作剪贴板，浏览器类 → 正在操作浏览器；未知名仍兜底「正在操作桌面」。
->
-> 工具名 **`computer_control_goal` 不变**。
->
-> **0.5.0：横幅多一段「正在做什么」，目标不再乱跳**
->
-> 横幅是：
->
-> ```
-> DSH 正在控制电脑 · 会话《<会话标题>》· 正在点击 · 目标：<目标>
-> ```
->
-> - **多开了几个会话也认得出来**：会话标题取自宿主的 session-title 服务；取不到时
->   普通会话显示「主会话」、子代理会话显示「子代理」。标题超过 30 字自动截断。
-> - **多了一段永远是真的「正在做什么」**：宿主知道当前在调哪个官方桌面工具，所以
->   这一段是事实，不是猜的——`正在看屏幕` / `正在点击` / `正在输入` / `正在按键` /
->   `正在滚动` / `正在拖拽` / `正在启动程序` / `正在查看窗口`；认不出来的工具一律
->   兜底成「正在操作桌面」，**不会**露出英文工具名，也**不会**空着。
-> - **模型声明的目标跨轮保留**：以前每轮结束就清掉，后续轮次只能退回引用用户原话，
->   于是横幅上出现了用户的抱怨原话。现在声明的目标一直留着，只在**会话关闭**或
->   **用户下了新的真人指令**时才换掉。
-> - **问句和抱怨不再是目标**：真人消息里**命中下面任一关键词就判为非指令**
->   （关键词**出现在任意位置**都算，不是只看开头）：
->
->   ```
->   似乎   好像   为什么   怎么   怎么回事   没看懂   看不懂
->   是不是   能不能   可不可以   啊这
->   ```
->
->   另外：文本带中文或英文问号（`？` / `?`）→ 非指令；文本少于 4 个字符 → 非指令。
->   非指令的消息**不作为目标**，也不会把已经有的目标顶掉。
->
-> 工具名 **`computer_control_goal` 不变**。
->
-> **0.4.0：横幅改成三段式（会话身份 + 目标）**
->
-> 横幅当时是：
->
-> ```
-> DSH 正在控制电脑 · 会话《<会话标题>》· 目标：<目标>
-> ```
->
-> - **目标里不再有机器话**：自动摘要只接受人写的指令。系统注入的上下文（AgentTeams
->   派发文本、`<system-reminder>`、runtime context、`continuum_resume`、模型切换、
->   计划模式切换、审批策略变更、后台子代理通知等）一律**不作为目标**，横幅里那一段
->   干脆不出现，不会留一个空的"目标："。
->
-> 工具名 **`computer_control_goal` 不变**。
+The default banner text is Chinese; `indicatorText` and `goalTemplate` let you replace both
+segments (see [Configuration](#configuration)).
 
-> **0.3.0 是改名版本（破坏性变更）**
->
-> 包名从 `dsh-computer-control-indicator` 改为 **`dsh-cua-driver-indicator`**，
-> 让人一眼看出它补的是官方内置 **Cua Driver** 那条通道（官方包名
-> `@deepseek-ai/dsh-experimental-computer-use-cua-driver-native`）。
-> 插件在配置树里的 **行 id** 也随之从 `computer-control-indicator` 改为
-> `cua-driver-indicator`：你自己在 profile 的 `cordis.patch.yml` 里写过
-> `- id: computer-control-indicator` 的覆盖行，需要改成新 id，否则不再生效。
-> 模型可见的工具名 **`computer_control_goal` 不变**。
+### The goal gate
 
-## 安装
+Before the desktop is touched at all, the model has to say what it is about to do. The tool
+name is **`computer_control_goal`**:
 
-插件是 Windows 专用（画面层是 WinForms 浮层）。在 DSH 里装：
+```jsonc
+{ "goal": "click the Save button" }   // shown in the banner, at most `goalMaxChars` characters
+```
+
+The gate has three core semantics:
+
+| Situation | Result |
+| --- | --- |
+| The model declared a goal | The call goes through. |
+| No declared goal, **first** desktop call of the turn | The call is sent back **once**, with an error the model can act on: declare the goal with `computer_control_goal`, then retry the very same call. |
+| No declared goal, the turn was **already** sent back | The call goes through — the gate never locks a session out of the desktop. |
+
+On top of that:
+
+- The block happens **before** the desktop lease is taken, so a blocked call touches nothing
+  and leaves the desktop free for every other session.
+- The counter is **reset per turn** (`turn/end` clears it), so the next turn starts over.
+- The automatic summary of your instruction is **not** a declared goal: only what the model
+  reports on purpose opens the gate.
+- If the host names no turn for a call, the gate **fails open** (the call is let through and a
+  warning is logged): a gate that locks the desktop out is worse than no gate.
+
+### Esc really stops
+
+A physical Esc aborts the desktop call that is currently in flight (each call carries a
+combined `AbortSignal` and the native provider honours it) and blocks the rest of that turn,
+because aborting only the current call would let the agent deliver the next one.
+
+Limits you have to know:
+
+- Esc can only interrupt a call that is **still in flight** and stop the **following** calls.
+  Input that was already handed to an application cannot be recalled — a click that landed and
+  characters that were typed are physically gone.
+- Only the **physical** key counts. A simulated key press (for example the agent's own
+  `press_key`) is not treated as a stop request, otherwise the agent could stop itself with a
+  single key press.
+
+## Install
+
+The plugin is Windows-only (the picture layer is a WinForms overlay). Install it into DSH:
 
 ```powershell
 dsh plugin --profile <profile> add dsh-cua-driver-indicator
 ```
 
-把 `<profile>` 换成你正在用的 profile 名（例如 `default`）。装完**重启 DSH** 生效。
+Replace `<profile>` with the profile you actually use (for example `default`). **Restart DSH**
+afterwards — plugins and their configuration are loaded at startup.
 
-非 Windows 平台不会启动画面层：插件照常加载，只在日志里留一条
+On a non-Windows platform the picture layer does not start: the plugin still loads and leaves
+one line in the log,
 
 ```
 cua-driver-indicator: takeover indicator is Windows-only; disabled on linux
 ```
 
-其余功能全部退场，不报错、不崩溃。
+Everything else steps aside: no error, no crash.
 
-## 它依赖什么：DSH 官方的电脑控制插件
+## What it depends on: DSH's official computer-control channel
 
-本插件只画接管提示条。它画的那条通道是 **DSH 官方的电脑控制通道**
-（工具名 `cua_driver_native__*`），而官方通道在默认的 composition 里**不存在**。
+This plugin only draws the takeover banner. The channel it draws for is **DSH's official
+computer-control channel** (tool names `cua_driver_native__*`), and that channel does **not**
+exist in the default composition.
 
-所以本插件在启动时会检查它，缺了就**在网页里弹窗问你**：
+So the plugin checks for it at start-up and, when it is missing, **asks you in the web UI**:
 
-| 状态 | 弹窗里说什么 | 你能做什么 |
+| State | What the popup says | What you can do |
 | --- | --- | --- |
-| `available` | **什么都不显示** | —— 官方通道在，横幅照常工作 |
-| `missing` | 「本插件需要官方的「电脑控制」插件才能工作」 | 「安装官方电脑控制插件」/「暂不安装」 |
-| `installed-disabled` | 「官方电脑控制插件装了，但没有启用」 | 「去设置页启用」 |
-| `installed-inactive` | 「官方电脑控制插件装了，但工具没有出现」 | 「立即重启」（装了自动重启插件时才有） |
-| `unknown` | 不弹 | 宿主没回答，插件不乱猜 |
+| `available` | **nothing is rendered at all** | - the channel is there, the banner works |
+| `missing` | "this plugin needs DSH's official computer-control plugin" | "Install the official computer-control plugin" / "Not now" |
+| `installed-disabled` | "the official computer-control plugin is installed but not enabled" | "Enable it in the settings" |
+| `installed-inactive` | "the official computer-control plugin is installed, but its tools did not show up" | "Restart now" (only when the restart plugin is installed) |
+| `unknown` | no popup | the host did not answer; the plugin does not guess |
 
-- **不安装的话本插件将不可用**：没有官方通道，就没有东西可画，官方桌面工具也用不了。
-  选了「暂不安装」之后，左下角留一行字说明这件事，不会再弹第二次（下次启动还会问）。
-- **每次启动都问**：网页打开时弹窗会出现一次；官方通道在接下来的任何时刻出现
-  （比如你手动装了），弹窗会自己关掉——因为状态是**实时复检**的，不是启动时缓存的。
-- **只支持 Windows**：官方通道的原生实现是 Windows 上的 Cua Driver。
-  **macOS / Linux / WSL 托管实例不支持，本插件也不在那些平台上实测**。
-- **装了但没生效**时，弹窗会给出两个真实读数：**已装官方包版本**与**宿主版本**，
-  方便你看出版本漂移；读不到就写 `unknown`，不猜。
-  官方包**不由某个 bundle 提供**时，「已装官方包版本」就是 `unknown`：宿主没有按包名
-  暴露这个版本，插件不去猜一个数字出来。
+(The wording the plugin actually ships is Chinese - [README.zh.md](README.zh.md) has the exact
+text. The table above says what each card means.)
 
-### 缺官方电脑控制插件时的弹窗与一键安装
+- **Without it this plugin is unusable**: there is no channel, so there is nothing to draw, and
+  the official desktop tools cannot be used either. After "Not now" a one-line notice stays in
+  the corner, and the question comes back on the next start.
+- **The question comes back on every start**: the state is re-read **live** (not cached from
+  start-up), so the popup closes itself as soon as the official channel shows up.
+- **Windows only**: the native implementation of the official channel is the Windows Cua
+  Driver. **macOS / Linux / a hosted instance inside WSL are not supported, and this plugin is
+  not tested there.**
+- When the channel is **installed but not working**, the popup shows two real readings: the
+  **version of the installed official package** and the **host version**, so a version drift is
+  visible. A reading that cannot be read is reported as `unknown`, never guessed.
+  When the official packages are **not provided by a bundle**, the "installed official package
+  version" line is `unknown`: the host does not expose that version by package name, and the
+  plugin does not make one up.
 
-没有官方通道时，网页里会弹出这张卡片（`missing` 状态）：
+### The popup and the one-click install when the official plugin is missing
 
-- **标题**：「本插件需要官方的「电脑控制」插件才能工作」
-- **正文**：
-  1. 检测到你还没安装（或没有启用）DSH 官方的电脑控制插件。
-  2. 本插件只是它的「显示器」——屏幕上的横幅、按 Esc 中断，全靠它来驱动电脑。它不在，
-     本插件就完全用不了：不是功能少一点，而是没有任何东西可显示。
-  3. 装好之后要重启一次 DSH 才会生效。
-- **按钮**：「安装官方电脑控制插件」/「暂不安装」。选「暂不安装」之后，左下角留一行
-  「已跳过。本插件当前不可用，下次启动会再提醒一次。」
+When the official channel is missing, the web UI shows this card (the `missing` state):
 
-点「安装官方电脑控制插件」之后：
+- **Title**: "this plugin needs DSH's official computer-control plugin"
+- **Body**:
+  1. it says that DSH's official computer-control plugin is not installed (or not enabled);
+  2. it says that this plugin is only the *display* of that channel - the screen banner and
+     the Esc stop are driven by it, so without it this plugin cannot do anything at all: not
+     "a little less", but nothing to show;
+  3. it says that DSH has to be restarted once after the install.
+- **Buttons**: "Install the official computer-control plugin" / "Not now". After "Not now" a
+  one-line notice stays in the corner: the plugin is unavailable for now and will ask again on
+  the next start.
 
-- 安装**走宿主自己的插件管线**，现拉官方当前发布的版本——**本仓库的代码里不出现任何官方包
-  的精确版本号**（官方包跟着宿主走，写死版本号必然过时）。
-- 装完**重读宿主的插件清单做真验**：**两行都在、且都是启用状态**才算装好；只装上一行
-  不算，那种情况会单独告诉你「装上了一部分，通道还不可用」，不会含糊成一句"装好了"。
-- **重启由你决定**：插件只提示需要重启一次 DSH 才生效；宿主上装了自动重启插件时，
-  `installed-inactive` 卡片会额外给一个「立即重启」按钮。
+After "Install the official computer-control plugin":
 
-**仅 Windows**：官方通道的原生实现是 Windows 上的 Cua Driver。
-**WSL 托管实例 / macOS / Linux 不支持，本插件也不在那些平台上实测。**
+- The install goes **through the host's own plugin pipeline** and pulls whatever the official
+  packages currently publish - **no fixed version of an official package appears in this
+  repository** (they move with the host, so a pinned version would be wrong twice a year).
+- The install is then **verified for real**: the host's own plugin list is read again, and only
+  **both rows being there AND both being enabled** counts as installed. One row alone does not,
+  and that case says so ("only part of it is installed, the channel is not usable yet") instead
+  of claiming it worked.
+- **The restart is the user's call**: the plugin says that DSH has to be restarted once; when the
+  host has the auto-restart plugin, the `installed-inactive` card also offers a
+  "Restart now" button.
 
-### 安装包是独立发布的
+**Windows only**: the native implementation of the official channel is the Windows Cua Driver.
+**A hosted instance inside WSL, macOS and Linux are not supported, and this plugin is not tested
+there.**
 
-要装的东西是一个**独立的 npm 包**：`dsh-cua-driver-indicator-provider`（provider bundle）。
+### The install package is published on its own
 
-- 它的源码在本仓库的 [`provider-bundle/`](provider-bundle) 目录里，**但不随本插件发布**
-  （本插件 `package.json` 的 `files` 里没有它，`scripts/check-package.mjs` 会断言这一点）。
-- 本插件只按「**包名 + 版本范围**」引用它（默认 `dsh-cua-driver-indicator-provider@>=1`），
-  版本范围写在配置里，可以改。
-- **本仓库的代码里不出现任何官方包的精确版本号**：官方包跟着宿主走，写死版本号必然过时。
-  provider bundle 对两个官方包的依赖写的是**发布通道**（`next`），理由见
-  [provider-bundle/README.md](provider-bundle/README.md)。
-- **卸载本插件不会移除已装的官方两行**：那两行属于 provider bundle，不属于本插件。
+What gets installed is an **independent npm package**: `dsh-cua-driver-indicator-provider`
+(a provider bundle).
 
-### 版本漂移怎么办
+- Its source lives in [`provider-bundle/`](provider-bundle) of this repository, but it is
+  **not published with this plugin** (it is not in this package's `files`, and
+  `scripts/check-package.mjs` asserts that).
+- This plugin refers to it by **package name + version range** only (by default
+  `dsh-cua-driver-indicator-provider@>=1`); the range is configuration and can be changed.
+- **No fixed version of an official package appears in this repository**: the official packages
+  move with the host, so a pinned version would be wrong twice a year. The provider bundle
+  depends on the two official packages through their **release channel** (`next`); the reason is
+  written down in [provider-bundle/README.md](provider-bundle/README.md).
+- **Removing this plugin does not remove the two official rows**: they belong to the provider
+  bundle, not to this plugin.
 
-- 官方包升级 → provider bundle 的依赖是通道名，不用改；必要时重启 DSH 即可。
-- provider bundle 升级 → 本插件不用改，也不用重发。
-- 本插件升级 → 与官方包无关。
+### When the versions drift
 
-## 它做什么
+- The official packages move → the provider bundle depends on a channel name, nothing to change;
+  a DSH restart is enough.
+- The provider bundle moves → this plugin does not change and does not need a new release.
+- This plugin moves → unrelated to the official packages.
 
-1. **亮条**：官方通道第一次真正操作桌面时，在屏幕顶部（或底部）出现一条不抢焦点、
-   鼠标可穿透的提示条；指针旁出现光环与 DSH 徽标。
-2. **四段式横幅**：提示条上的文字是
-   **DSH 正在控制电脑 · 会话《<会话标题>》· 正在点击 · 目标：<目标>**。
-   - **谁在控制**：会话标题来自宿主，取不到时回落成「主会话」/「子代理」；
-   - **正在做什么**：由当前正在跑的官方桌面工具推出来，是事实不是猜测；
-   - **目标**：两个来源：
-     - **打底**：自动摘要你最近一条真人指令（注入的环境上下文不算）；
-     - **覆盖**：模型可以调用 `computer_control_goal` 工具上报更准确的目标，它在本会话内
-       优先于自动摘要，**跨轮保留**，直到你换目标或用户下了新的真人指令。
-   暂时没有目标时，整段「· 目标：…」**不出现**，不会留一个空的"目标："；
-   「正在做什么」那一段**永远在**。
-3. **收条**：本轮结束、或最后一次桌面调用之后空闲 30 秒，提示自动收起。
-4. **Esc 真停**：物理 Esc 会**中断正在执行的官方桌面调用**，并封禁本回合剩余的桌面
-   调用（下一轮可以正常使用）。这是本插件相对"只有提示"的关键增量。
-5. **先说目的再动手（软强制门）**：会话还没声明目标时，它第一次调官方桌面工具会被
-   **退回一次**，模型收到一条可执行的错误（叫它先调 `computer_control_goal`
-   声明本轮目标，声明后重试同一个调用即可）。
-   - **只拦一次，绝不死锁**：同一轮里的第二次调用一定放行，模型不听话也不会被卡住；
-     这种情况下日志里会留一条 warn（带 sessionId 与工具名）。
-   - **拦截不占租约**：拦在取得租约之前，被拦的调用什么都不碰。
-   - **按轮次重置**：`turn/end` 清掉计数，下一轮重新算一次。
-   - **已声明目标的会话不受影响**：目标跨轮保留，下一轮的第一次调用直接放行。
+## Platform limits
 
-### 关于 Esc 的边界（必须知道）
+- **Windows only.** The package declares `"os": ["win32"]`, so pnpm refuses to install it on
+  Linux (EBADPLATFORM) instead of installing something that would never do anything.
+- **The banner is drawn on the machine that runs DSH.** It is painted by a host-side Windows
+  process (`powershell.exe` + WinForms), so it appears on that machine's screen. It is not an
+  element of any web page.
+- **The web UI works the same.** A browser pointing at a Windows host (`dsh web` on Windows)
+  talks to that very host, so the banner behaves exactly as in the desktop app.
+- **A DSH instance inside WSL cannot do either half of this.** Its host is Linux: the official
+  channel there drives the WSLg virtual display (Linux GUI programs inside WSL) and cannot
+  reach real Windows windows, and the banner would have to be painted by a Windows-side
+  process. A WSL instance therefore controls neither your Windows desktop nor draws a banner.
 
-- Esc 只能中断**正在飞行中**的那一次调用，以及阻止**后续**调用。
-  **已经交给应用的输入撤不回来**——点击已经落下、字符已经打进输入框，物理上无法回收。
-- 只有物理按键有效；程序模拟的按键（例如 agent 自己发 `press_key`）不会被当作停止信号，
-  否则 agent 一次按键就能把自己停掉。
+## Configuration
 
-## 自检：官方工具名变了要看得见
+Change it in the profile's `cordis.patch.yml` and restart DSH:
 
-本插件与官方通道的耦合点只有**一个**：官方工具名的前缀 `cua_driver_native__`。
-官方哪天改了前缀，横幅会**无声消失**——没有任何报错，用户只会觉得"插件坏了"。
+```yaml
+- id: cua-driver-indicator
+  config:
+    indicatorEnabled: true            # screen edges and banner
+    cursorIndicatorEnabled: true      # pointer halo
+    remoteIndicatorVisible: true      # visible in remote sessions and recordings
+    indicatorText: 'DSH 正在控制电脑'  # banner head text
+    goalTemplate: '目标：{goal}'       # goal segment template, {goal} is replaced
+    goalMaxChars: 24                  # max length of the goal summary
+    indicatorPosition: top            # top / bottom
+    indicatorIdleMs: 1200             # fade-out delay (200–3000 ms)
+    idleMs: 30000                     # idle time that ends control (ms)
+    stopOnEscape: true                # physical Esc stops
+    providerCheckEnabled: true        # check the official channel and ask when it is missing
+    providerBundle: dsh-cua-driver-indicator-provider   # the independent provider bundle
+    providerBundleRange: '>=1'        # its version range (never a pinned version)
+```
 
-为此插件挂了一个 60 秒一跳的自检：
+## Self-check: you should notice if the official tool names change
 
-- 每次看到官方通道的工具调用，就记下时间；
-- **从未看到过**，或者**距上次看到已超过 10 分钟**，就写一条日志；
-- 最多每 30 分钟写一条，避免刷屏。
+The only coupling between this plugin and the official channel is the tool-name prefix
+`cua_driver_native__`. If the official channel ever renames its tools, the banner would
+**disappear without a word** — no error, just a plugin that looks broken.
 
-日志长这样（`cua-driver-indicator:` 是日志前缀）：
+So the plugin runs a self-check every 60 seconds: it remembers when it last saw an official
+tool call, and when it has never seen one, or when more than 10 minutes have passed since the
+last one, it writes one log line (at most one every 30 minutes):
 
 ```
 cua-driver-indicator: no official CUA tool call seen for 12 minutes — if the takeover
@@ -368,65 +315,52 @@ banner does not appear, the official tool names may have changed (currently matc
 cua_driver_native__*)
 ```
 
-看到这条，就去确认官方工具名是不是改了，然后同步更新 `lib/index.js` 里的
-`OFFICIAL_TOOL_PREFIX` 与 `lib/series.mjs` 里的 `NATIVE_TOOL`。
-这条自检**只读两个时间戳、只写一行日志**，不影响横幅、Esc 停止与租约。
+If you see that line, check whether the official tool names changed and update
+`OFFICIAL_TOOL_PREFIX` in `lib/index.js` and `NATIVE_TOOL` in `lib/series.mjs`. The self-check
+only reads two timestamps and writes one line: it cannot affect the banner, the Esc stop or
+the desktop lease.
 
-## 配置项
+## Layout
 
-在 profile 的 `cordis.patch.yml` 里改，改完重启 DSH 生效：
-
-```yaml
-- id: cua-driver-indicator
-  config:
-    indicatorEnabled: true            # 屏幕边缘 + 提示条
-    cursorIndicatorEnabled: true      # 指针光环 + DSH 徽标
-    remoteIndicatorVisible: true      # 远程桌面 / 录屏 / 屏幕共享里可见
-    indicatorText: 'DSH 正在控制电脑'  # 横幅首段文字
-    goalTemplate: '目标：{goal}'       # 目标段模板，{goal} 会被替换
-    goalMaxChars: 24                  # 目标摘要最大字数，超出自动截断
-    indicatorPosition: top            # top / bottom
-    indicatorIdleMs: 1200             # 收起前的淡出延时（200–3000 毫秒）
-    idleMs: 30000                     # 空闲多久视为控制结束（毫秒）
-    stopOnEscape: true                # 物理 Esc 停止
-    providerCheckEnabled: true        # 检测官方电脑控制插件，缺失时弹窗询问
-    providerBundle: dsh-cua-driver-indicator-provider   # 独立安装包名
-    providerBundleRange: '>=1'        # 安装包版本范围（不写死版本号）
-```
-
-> `goalTemplate` 在 0.3.0 里描述的是整条横幅（`DSH 基于「{goal}」正在控制电脑`），
-> 0.4.0 起只描述**目标那一段**（默认 `目标：{goal}`）。如果你的 profile 里显式写过
-> 旧的 `goalTemplate`，删掉它即可回到默认值。
-
-## 结构
-
-| 文件 | 职责 |
+| File | Responsibility |
 | --- | --- |
-| `lib/index.js` | 监听 `tools/execute`、维护提示显隐、组装横幅（会话 + 动作 + 目标）、**软强制门**（未声明目标先退回一次）、从宿主取会话标题、拉起并驱动 Windows 画面层、把 Esc 事件接到停止逻辑、注册 `computer_control_goal` 工具、跑"官方工具名"自检 |
-| `lib/goal.mjs` | 纯逻辑：目标摘要、人话判定（机器话不进目标）、问句/抱怨判定、动作词映射表、横幅拼装、会话身份回落、按会话存放的目标状态（含"有没有模型声明的目标"）、**强制门判定**（放行/退回、按轮次的拦截状态、目标存储键）与**闸门接线**（`evaluateGoalGate` 评估 + `runGoalGate` 记住本轮 + `execTurn` 取轮次 + `gateStateKey` 统一键）、消息来源判定。可脱离 DSH 单测 |
-| `lib/series.mjs` | 纯状态机：接管租约、在途调用登记、Esc 停止与封禁范围。可脱离 DSH 单测 |
-| `lib/provider.mjs` | 纯逻辑：**官方电脑控制通道的五态检测**（available / installed-disabled / installed-inactive / missing / unknown）、安装目标（包名 + 版本范围）、安装结果与重启结果的错误码映射。可脱离 DSH 单测 |
-| `client.js` | 浏览器半边：官方通道缺失时的**居中弹窗**（安装 / 暂不安装 / 去设置页启用 / 立即重启）、状态实时复检；通道在时**完全不渲染** |
-| `provider-bundle/` | **独立发布**的 provider bundle 源码（不进本插件的 npm 包），见 [provider-bundle/README.md](provider-bundle/README.md) |
-| `scripts/windows-takeover.*` | Windows 画面层（复制自上游，见 `THIRD_PARTY.md`） |
-| `tests/series.test.mjs` | `node --test` 可跑的单元测试（租约与停止语义） |
-| `tests/goal.test.mjs` | `node --test` 可跑的单元测试（目标摘要、人话判定、动作词、横幅拼装、来源过滤、跨轮保留、模型目标标志、**强制门五条语义**、**闸门接线用例**、**记住本轮/缺轮次用例**） |
-| `tests/provider.test.mjs` | `node --test` 可跑的单元测试（**五态检测**、安装/重启错误码、**源码里没有官方包精确版本号**、provider bundle 不随包发布） |
+| `lib/index.js` | Listens to `tools/execute`, keeps the banner in sync, assembles it (session + action + goal), runs the **goal gate**, reads the session title from the host, drives the Windows picture layer, wires Esc to the stop logic, registers the `computer_control_goal` tool, and runs the official-tool-name self-check. |
+| `lib/goal.mjs` | Pure logic: goal summaries, human-vs-machine text, questions and complaints, the action-word table, banner assembly, session identity fallback, per-session goal state, **the gate decision and its wiring**, and message-source detection. Import-free, so plain node can test it. |
+| `lib/series.mjs` | Pure state machine: the takeover lease, in-flight call registration, the Esc stop and its scope. Import-free, so plain node can test it. |
+| `lib/provider.mjs` | Pure logic: the **five states of the official channel** (available / installed-disabled / installed-inactive / missing / unknown), the install target (package name + version range), and the error codes of the install and restart answers. Import-free, so plain node can test it. |
+| `client.js` | The browser half: the **centred popup** when the official channel is missing (install / not now / go enable it / restart now), with a live re-read of the state; it renders **nothing at all** when the channel is there. |
+| `provider-bundle/` | The source of the **independently published** provider bundle (not part of this package); see [provider-bundle/README.md](provider-bundle/README.md). |
+| `scripts/windows-takeover.*` | The Windows picture layer (copied from upstream, see `THIRD_PARTY.md`). |
+| `tests/goal.test.mjs` | `node --test` unit tests (goal summaries, human-vs-machine text, action words, banner assembly, source filtering, the goal gate and its wiring). |
+| `tests/series.test.mjs` | `node --test` unit tests (lease and stop semantics). |
+| `tests/provider.test.mjs` | `node --test` unit tests (the **five states**, the install and restart error codes, **no fixed official version in the source**, the provider bundle is not published with this package). |
+| `scripts/check-package.mjs` | Checks what `npm pack` would ship (no `node_modules/`, no `*.tgz`, no `*.bak-*`, **no `provider-bundle/`**, no dependency on an official package, no fixed official version in the source, and the required files are in). |
+| `docs/self-check.md` | The pre-release checklist. |
 
-## 验证
+## Tests
+
+There is **no `npm install` step**: the plugin has no runtime dependencies and the tests import
+the pure logic modules only.
 
 ```powershell
 node --check lib/index.js
 node --check lib/goal.mjs
 node --check lib/series.mjs
 node --check lib/provider.mjs
-node --test tests/series.test.mjs
 node --test tests/goal.test.mjs
+node --test tests/series.test.mjs
 node --test tests/provider.test.mjs
 node scripts/check-package.mjs
 ```
 
-## 许可证
+CI (`.github/workflows/tests.yml`) runs the goal and series test files on Node 20 and on Node 22 for
+every push and pull request. `tests/provider.test.mjs` is not in that workflow yet — it has to be
+added there before the next release (the file is outside this change's scope).
 
-MIT，见 [LICENSE](LICENSE)。画面层来自上游，见 `THIRD_PARTY.md` 与
-`LICENSE-THIRD-PARTY`。
+Contributions, the change rules and the release flow are in
+[CONTRIBUTING.md](CONTRIBUTING.md); the version history is in [CHANGELOG.md](CHANGELOG.md).
+
+## License
+
+MIT — see [LICENSE](LICENSE). The picture layer comes from upstream: see `THIRD_PARTY.md` and
+`LICENSE-THIRD-PARTY`.

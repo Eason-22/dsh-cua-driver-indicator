@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import {
   OFFICIAL_TOOL_PREFIX,
@@ -642,12 +643,19 @@ test('the panel does not say "已经装上了" for a half install', () => {
   const body = handler[1];
   // The success wording is behind the verification check.
   assert.match(body, /answer\.verified !== false/u);
-  assert.match(body, /装上了，但两行官方插件还没都到位，重启后再看。/u);
-  // The success wording itself is only used in the verified branch.
-  const successIndex = body.indexOf('已经装上了');
+  // The two wordings are two different dictionary entries now.
+  assert.match(body, /t\('install\.done'\)/u);
+  assert.match(body, /t\('install\.partial'\)/u);
   const guardIndex = body.indexOf('answer.verified !== false');
-  assert.ok(guardIndex !== -1 && successIndex !== -1);
+  const successIndex = body.indexOf("t('install.done')");
+  const partialIndex = body.indexOf("t('install.partial')");
+  assert.ok(guardIndex !== -1 && successIndex !== -1 && partialIndex !== -1);
   assert.ok(guardIndex < successIndex, 'the verification check comes before the success wording');
+  // The wording itself: the success one says it is installed, the half one does not.
+  const zh = JSON.parse(readFileSync(path.join(root, 'locale/zh.json'), 'utf8'));
+  assert.ok(zh.install.done.startsWith('已经装上了'), 'the installed wording says so');
+  assert.equal(zh.install.partial, '装上了，但两行官方插件还没都到位，重启后再看。');
+  assert.ok(!zh.install.partial.includes('已经装上了'), 'a half install must not claim it worked');
 });
 
 test('the panel and the install answer say the same thing about the restart', () => {
@@ -656,4 +664,152 @@ test('the panel and the install answer say the same thing about the restart', ()
   const outcome = mapInstallOutcome({ application: 'restart-required', stage: 'install', target: 'x' });
   assert.ok(outcome.message.includes(RESTART_HINT), 'the install answer must use the shared restart wording');
   assert.match(client, new RegExp(RESTART_HINT.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+});
+
+/* ------------------------------------------------------------------ *
+ * The two languages of the panel.
+ * ------------------------------------------------------------------ */
+
+/** Every leaf of a dictionary, as 'path -> text'. */
+function leaves(value, prefix = '', out = new Map()) {
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => leaves(item, prefix + '.' + index, out));
+    return out;
+  }
+  if (value !== null && typeof value === 'object') {
+    for (const [key, item] of Object.entries(value)) {
+      leaves(item, prefix ? prefix + '.' + key : key, out);
+    }
+    return out;
+  }
+  out.set(prefix, value);
+  return out;
+}
+
+/** The dictionary of the client, read out of its source. */
+function clientDictionary(name) {
+  const client = readFileSync(path.join(root, 'client.js'), 'utf8');
+  const block = new RegExp(`const ${name} = \\{([\\s\\S]*?)\\n {2}\\}\\n`, 'u').exec(client);
+  assert.ok(block !== null, `the ${name} dictionary must exist in client.js`);
+  // The Chinese dictionary mentions the shared restart wording.
+  return new Function('RESTART_HINT', `return {${block[1]}}`)(RESTART_HINT);
+}
+
+/** The client, evaluated in a sandbox: no DOM, no network, no real host. */
+function loadClient({ language = 'zh-CN', locale = null } = {}) {
+  const source = readFileSync(path.join(root, 'client.js'), 'utf8');
+  const sandbox = {
+    console,
+    navigator: language === null ? {} : { language },
+    window: { __ModuleLoader__: { load: (module) => { sandbox.__module = module; } } },
+  };
+  vm.createContext(sandbox);
+  vm.runInContext(source, sandbox);
+  return sandbox;
+}
+
+/** The host context the client is applied to. */
+function fakeContext(locale) {
+  return {
+    slots: { inject: (name, fn) => fn(), register: () => {} },
+    locale,
+  };
+}
+
+const REACT_STUB = {
+  createElement: (type, props, ...children) => ({ type, props, children }),
+  useState: (value) => [value, () => {}],
+  useEffect: () => undefined,
+  useCallback: (fn) => fn,
+};
+
+test('the Chinese and the English wording have exactly the same keys', () => {
+  const zh = JSON.parse(readFileSync(path.join(root, 'locale/zh.json'), 'utf8'));
+  const en = JSON.parse(readFileSync(path.join(root, 'locale/en.json'), 'utf8'));
+  const zhKeys = [...leaves(zh).keys()].sort();
+  const enKeys = [...leaves(en).keys()].sort();
+  assert.deepEqual(zhKeys, enKeys, 'no wording may be translated in one language only');
+  assert.ok(zhKeys.length > 20, 'the panel has a real amount of wording');
+  // Every English text is really English (the Chinese one is not a copy).
+  for (const [key, text] of leaves(en)) {
+    assert.ok(!/[一-鿿]/u.test(text), `the English wording of ${key} must not be Chinese`);
+  }
+});
+
+test('the locale files are the mirror of the dictionaries in the client', () => {
+  const zhJson = JSON.parse(readFileSync(path.join(root, 'locale/zh.json'), 'utf8'));
+  const enJson = JSON.parse(readFileSync(path.join(root, 'locale/en.json'), 'utf8'));
+  const zh = leaves(clientDictionary('ZH'));
+  const en = leaves(clientDictionary('EN'));
+  assert.deepEqual([...zh.keys()].sort(), [...zhJson && leaves(zhJson).keys()].sort(), 'the Chinese dictionary and locale/zh.json must agree');
+  for (const [key, text] of leaves(zhJson)) {
+    assert.equal(zh.get(key), text, `locale/zh.json must carry the same Chinese wording for ${key}`);
+  }
+  for (const [key, text] of leaves(enJson)) {
+    assert.equal(en.get(key), text, `locale/en.json must carry the same English wording for ${key}`);
+  }
+});
+
+test('the panel speaks the language of the user', () => {
+  const zh = loadClient({ language: 'zh-CN' });
+  assert.equal(
+    zh.__dshCuaDriverIndicatorClient.t('missing.title'),
+    '本插件需要官方的「电脑控制」插件才能工作',
+  );
+  const en = loadClient({ language: 'en-US' });
+  assert.equal(
+    en.__dshCuaDriverIndicatorClient.t('missing.title'),
+    "This plugin needs DSH's official computer-control plugin to work",
+  );
+  assert.equal(en.__dshCuaDriverIndicatorClient.t('missing.install'), 'Install the official computer-control plugin');
+});
+
+test('without any language the panel stays Chinese, exactly as before', () => {
+  const blind = loadClient({ language: null });
+  assert.equal(blind.__dshCuaDriverIndicatorClient.currentLanguage(), 'zh');
+  assert.equal(
+    blind.__dshCuaDriverIndicatorClient.t('missing.title'),
+    '本插件需要官方的「电脑控制」插件才能工作',
+  );
+});
+
+test('the host locale service decides, and it is read at call time', () => {
+  const client = loadClient({ language: 'zh-CN' });
+  const api = client.__dshCuaDriverIndicatorClient;
+  // The host says English while the browser says Chinese: the host wins.
+  const module = client.__module.factory(() => REACT_STUB);
+  module.apply(fakeContext({ getLocale: () => ({ locale: 'en' }) }));
+  assert.equal(api.currentLanguage(), 'en');
+  assert.equal(api.t('missing.install'), 'Install the official computer-control plugin');
+  // The service is read again at every call, so a switch is followed at once.
+  let locale = 'en';
+  module.apply(fakeContext({ getLocale: () => ({ locale }) }));
+  locale = 'zh';
+  assert.equal(api.currentLanguage(), 'zh');
+  assert.equal(api.t('missing.install'), '安装官方电脑控制插件');
+});
+
+test('a wording that does not exist falls back to a text, never to a key', () => {
+  const en = loadClient({ language: 'en-US' });
+  const text = en.__dshCuaDriverIndicatorClient.t('nothing.here');
+  assert.notEqual(text, 'nothing.here', 'a key name must never reach the screen');
+  assert.equal(text, 'This text is missing.', 'the last resort is the wording of this language');
+  const zh = loadClient({ language: 'zh-CN' });
+  assert.equal(zh.__dshCuaDriverIndicatorClient.t('nothing.here'), '这段文字缺失。');
+});
+
+test('the panel asks the host for the language service', () => {
+  const client = readFileSync(path.join(root, 'client.js'), 'utf8');
+  assert.match(client, /inject:\s*\['slots',\s*'locale'\]/u, 'the client must ask for the locale service');
+  assert.match(client, /localeService = ctx\?\.locale \?\? null/u);
+  assert.match(client, /getLocale\(\)/u, 'the language is read from the host service');
+});
+
+test('the manifest exports the locale files and ships them', () => {
+  const manifest = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
+  assert.equal(manifest.exports['./locale/*.json'], './locale/*.json', 'the locale files must be exported');
+  assert.ok(
+    (manifest.files || []).some((entry) => String(entry).includes('locale')),
+    'the locale files must be in the tarball',
+  );
 });

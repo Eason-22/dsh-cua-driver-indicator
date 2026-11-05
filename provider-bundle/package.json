@@ -1,7 +1,7 @@
 {
   "name": "dsh-cua-driver-indicator-provider",
-  "version": "1.0.0",
-  "description": "Provider bundle for dsh-cua-driver-indicator: it inserts the two official DSH computer-control rows so that the official cua_driver_native__* tools exist. Published as its own npm package, independently of dsh-cua-driver-indicator.",
+  "version": "1.0.1",
+  "description": "Provider bundle for dsh-cua-driver-indicator: it inserts the two official DSH computer-control rows so that the official cua_driver_native__* tools exist. Published as its own npm package, independently of dsh-cua-driver-indicator. It is a companion part: installing it on its own has no effect and shows no UI - it only makes DSH insert the two official rows. Windows only.",
   "keywords": [
     "dsh",
     "dsh-plugin",

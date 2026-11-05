@@ -4,7 +4,7 @@
 > 清单只覆盖本仓库能自己证明的事；收录方（awesome 列表、插件目录）另有自己的门槛，
 > 那部分由提交方自己核对。
 >
-> 当前仓库版本：**0.7.0**（下面的命令在仓库根目录执行）。
+> 当前仓库版本：**0.7.1**（下面的命令在仓库根目录执行）。
 
 ## 0. 环境
 
@@ -38,7 +38,7 @@ node -e "const p=require('./package.json');console.log(JSON.stringify({version:p
 | `os` | `["win32"]` |
 | `private` | **未设置**（设了 npm 会拒绝发布） |
 | `version` | 语义化版本，且**与 `README.md` 顶部第一个版本标题一致**（这一条由测试断言，见第 4 节） |
-| `files` | 显式列出要发出去的内容：`lib/`、`client.js`、`scripts/`、`docs/`、`cordis.patch.yml`、`README.md`、`THIRD_PARTY.md`、`LICENSE`、`LICENSE-THIRD-PARTY`。**`provider-bundle/` 不在里面**（它独立发布） |
+| `files` | 显式列出要发出去的内容：`lib/`、`client.js`、`scripts/`、`docs/`、`cordis.patch.yml`、`README.md`、`README.zh.md`、`THIRD_PARTY.md`、`LICENSE`、`LICENSE-THIRD-PARTY`。**`provider-bundle/` 不在里面**（它独立发布） |
 | `dsh.client` | `platform: web`，`exports` 里有 `"./client": "./client.js"` |
 | 依赖 | **不得**依赖 `@deepseek-ai/dsh-computer-use` 或 `@deepseek-ai/dsh-experimental-computer-use-cua-driver-native`（那两行属于 provider bundle） |
 
@@ -49,7 +49,7 @@ node -e "const p=require('./package.json');console.log(JSON.stringify({version:p
 
 | 项 | 期望 |
 | --- | --- |
-| 平台 | **Windows only**。macOS / Linux / WSL 托管实例**不支持**，本仓库也**不在那些平台上实测**（`docs/self-check.md` 与两份 README 都写明这一点） |
+| 平台 | **Windows only**。macOS / Linux / WSL 托管实例**不支持**，本仓库也**不在那些平台上实测**（`docs/self-check.md` 与两份 README —— [README.md](../README.md) 英文、[README.zh.md](../README.zh.md) 中文 —— 都写明这一点） |
 | 安装包 | 独立发布的 `dsh-cua-driver-indicator-provider`（源码在 `provider-bundle/`）。**不随本插件发布** |
 | 引用方式 | 只按「**包名 + 版本范围**」引用（默认 `dsh-cua-driver-indicator-provider@>=1`），范围在配置里 |
 | 版本号 | **源码里不得出现任何官方包的精确版本号**（`@deepseek-ai/dsh-computer-use@x.y.z` 这类字面量）；provider bundle 对两个官方包的依赖写**发布通道** |
@@ -63,7 +63,8 @@ node -e "const p=require('./package.json');console.log(JSON.stringify({version:p
 Select-String -Path README.md -Pattern "dsh plugin --profile <profile> add dsh-cua-driver-indicator"
 ```
 
-期望：命中。英文版 [README.en.md](../README.en.md) 里也应有同一条命令。
+期望：命中。英文版 [README.md](../README.md)（默认，GitHub 与 npm 显示的就是它）与中文版
+[README.zh.md](../README.zh.md) 里都应有同一条命令。
 
 ## 4. 语法与测试
 
@@ -95,7 +96,7 @@ npm pack --dry-run --json
 - 本插件的 `package.json` **不依赖**任何官方电脑控制包；
 - 源码里**没有**官方包的精确版本号；
 - 产物里**必须有** `lib/goal.mjs`、`lib/index.js`、`lib/provider.mjs`、`lib/series.mjs`、
-  `client.js`、`cordis.patch.yml`、`LICENSE`、`README.md`。
+  `client.js`、`cordis.patch.yml`、`LICENSE`、`README.md`、`README.zh.md`。
 
 确认无误后再 `npm pack` 真正打包。
 

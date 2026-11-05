@@ -13,6 +13,20 @@
 >   （`5995c6b` / `cbe29bc`，均为 2026-10-27）。0.5.0 – 0.6.3 与它们在同一天内完成，
 >   因此也记为 2026-10-27。
 
+## [0.7.1] — 2026-11-05（未发布到 npm：等真机复验后再发）
+
+### 变更
+
+- **界面文案双语，缺省中文。** 面板的可见文案不再写死中文：先读宿主的语言服务
+  （`ctx.locale`），其次读浏览器语言，两者都拿不到时**回退中文**（不能因为宿主旧了就让
+  中文用户看到英文卡片）。中文文案一个字没改，英文是新增的一套；新增 `locale/zh.json`
+  与 `locale/en.json`（与内置字典逐字一致，测试会比对键集合），并在 `package.json` 的
+  `exports` / `files` 里声明，写法照抄 profile 里真实可用的官方客户端插件。
+- **README 默认英文，中文整份保留。** `README.md` 现在是英文（原 `README.en.md` 的内容），
+  中文全文移到 `README.zh.md`，两边顶部互链；`README.en.md` 变成一页「正文已迁到
+  README.md」的说明页，旧链接不会 404。打包清单与 `check-package` 的必带列表都加了
+  `README.zh.md`。npm 页面正文取包里的 `README.md`，所以要等这一版发布后才会变英文。
+
 ## [0.7.0] — 2026-11-05（未发布到 npm：先落代码与文案，真机验证与发布待办）
 
 ### 新增
@@ -62,6 +76,10 @@
   **provider bundle 的每个 insert 行都显式写了 `disabled: false`**（漏了这行，装完插出来
   的行是停用状态，用户会落到「点了安装还是不能用」）；
   同时修好了 npm 新版本把 `pack --dry-run --json` 写成对象时的解析（原来会解析失败）。
+- **README 默认改成英文**：GitHub 仓库首页与 npm 页面正文显示的都是 `README.md`，所以
+  `README.md` 现在是英文（原 `README.en.md` 的内容），**中文整份保留在 `README.zh.md`**，
+  两份文件顶部互相链接。`README.en.md` 留了一个指向新位置的说明页，免得旧链接失效。
+  `package.json` 的 `files` 与 `scripts/check-package.mjs` 的必带清单都加上了 `README.zh.md`。
 
 ### 修复
 

@@ -100,8 +100,19 @@
     UNKNOWN: 'unknown',
   }
 
-  /** The wording of the panel, one entry per state. */
-  const TEXT = {
+  /**
+   * The wording of the panel: one entry per state, in two languages.
+   *
+   * WHY THE COPY LIVES HERE AND NOT ONLY IN `locale/*.json`: this file is
+   * evaluated as a CLASSIC script, so it cannot import the JSON files - the
+   * words have to be here. `locale/zh.json` and `locale/en.json` are the
+   * MIRROR of the two dictionaries below (same keys, same words; a test holds
+   * the three together), exactly like `dsh-autorestart` does it.
+   *
+   * The Chinese is the ORIGINAL and the default: a user whose language cannot
+   * be read sees exactly what they saw before this file was touched.
+   */
+  const ZH = {
     missing: {
       title: '本插件需要官方的「电脑控制」插件才能工作',
       body: [
@@ -127,7 +138,202 @@
       restart: '立即重启',
       noAutorestart: '这台机器上没有装自动重启插件，重启得你自己来。',
     },
+    text: {
+      restartHint: RESTART_HINT,
+      withCode: '（{code}）',
+      missing: '这段文字缺失。',
+    },
+    install: {
+      done: '已经装上了，' + RESTART_HINT,
+      partial: '装上了，但两行官方插件还没都到位，重启后再看。',
+      failed: '安装没有成功。',
+      requestFailed: '安装请求没有送到宿主：{error}',
+    },
+    enable: {
+      done: '已经启用了。',
+      failed: '启用没有成功。',
+      requestFailed: '启用请求没有送到宿主：{error}',
+    },
+    restart: {
+      done: '已经排了一次重启。',
+      failed: '重启没有排上。',
+      requestFailed: '重启请求没有送到宿主：{error}',
+    },
+    version: {
+      installed: '已装官方包版本：{version}',
+      host: '宿主版本：{version}',
+    },
   }
+
+  /** The same wording in English. The keys are the ones of `ZH`. */
+  const EN = {
+    missing: {
+      title: 'This plugin needs DSH\'s official computer-control plugin to work',
+      body: [
+        'It looks like DSH\'s official computer-control plugin is not installed (or not enabled).',
+        'This plugin is only the display of that channel: the on-screen banner and the Esc interrupt are driven by it. Without it this plugin cannot do anything at all - not "a little less", but nothing to show.',
+        'After the install, DSH has to be restarted once for it to take effect.',
+      ],
+      install: 'Install the official computer-control plugin',
+      dismiss: 'Not now',
+      declined: 'Skipped. This plugin is unavailable for now; it will ask again on the next start.',
+    },
+    disabled: {
+      title: 'The official computer-control plugin is installed, but not enabled',
+      body: 'It sits in the plugin list as "disabled", so the official tools do not appear - and neither does the takeover banner.',
+      note: 'This plugin stays unavailable until you enable it.',
+      action: 'Enable it in the settings',
+      hint: '(Enable it in the plugin list of the settings page; this button does the same thing.)',
+    },
+    inactive: {
+      title: 'The official computer-control plugin is installed, but its tools did not appear',
+      body: 'Both official rows are there and both are enabled, but the official tools (cua_driver_native__*) were not registered.',
+      note: 'A version mismatch is the usual reason. Restarting the host usually fixes it.',
+      restart: 'Restart now',
+      noAutorestart: 'There is no auto-restart plugin on this machine, so the restart is yours to do.',
+    },
+    text: {
+      restartHint: 'DSH has to be restarted once for it to take effect.',
+      withCode: '({code})',
+      missing: 'This text is missing.',
+    },
+    install: {
+      done: 'It is installed - DSH has to be restarted once for it to take effect.',
+      partial: 'Partly installed: the two official plugin rows are not both in place yet; look again after the restart.',
+      failed: 'The install did not work.',
+      requestFailed: 'The install request did not reach the host: {error}',
+    },
+    enable: {
+      done: 'It is enabled now.',
+      failed: 'Enabling it did not work.',
+      requestFailed: 'The enable request did not reach the host: {error}',
+    },
+    restart: {
+      done: 'A restart has been queued.',
+      failed: 'The restart could not be queued.',
+      requestFailed: 'The restart request did not reach the host: {error}',
+    },
+    version: {
+      installed: 'Installed official package version: {version}',
+      host: 'Host version: {version}',
+    },
+  }
+
+  /**
+   * THE LOCALE SERVICE of the Host (null until the plugin is applied).
+   *
+   * It knows the active language: the user picked one in the settings, or the
+   * browser's language decided. It is read at CALL time, so a language switch
+   * is followed at once. This is the same shape `dsh-autorestart` uses.
+   */
+  let localeService = null
+
+  /**
+   * The active language of this interface: 'zh' or 'en'.
+   *
+   * The Host's locale service decides; when it is not there (a slot rendered
+   * without the locale seat, an old host), the browser's language does.
+   * `zh*` is Chinese, everything else is English - the same rule the DSH
+   * locale service uses.
+   *
+   * ONE DEVIATION FROM `dsh-autorestart`, and it is deliberate: when NO
+   * language can be read at all, this plugin answers **Chinese**, because
+   * that is what it always showed. An English card must never appear
+   * because the host was old.
+   *
+   * @returns {'zh'|'en'}
+   */
+  function currentLanguage() {
+    let raw = ''
+    try {
+      if (localeService && typeof localeService.getLocale === 'function') {
+        const snapshot = localeService.getLocale()
+        if (snapshot && typeof snapshot.locale === 'string') raw = snapshot.locale
+      }
+    } catch {
+      raw = ''
+    }
+    if (raw === '' && typeof navigator !== 'undefined' && navigator && typeof navigator.language === 'string') {
+      raw = navigator.language
+    }
+    const lower = String(raw).toLowerCase()
+    if (lower === '') return 'zh'
+    return lower.startsWith('zh') ? 'zh' : 'en'
+  }
+
+  /**
+   * One entry out of a dictionary, by its dotted path ('missing.title').
+   *
+   * @param {object} table the dictionary
+   * @param {string} path the dotted path
+   * @returns {unknown} the entry, or undefined
+   */
+  function pick(table, path) {
+    let value = table
+    for (const part of String(path).split('.')) {
+      if (value === null || typeof value !== 'object') return undefined
+      value = value[part]
+    }
+    return value
+  }
+
+  /**
+   * Fill `{name}` placeholders from `params`.
+   *
+   * The value is inserted as LITERAL text (`$&` / `$1` are characters and not
+   * replace patterns, hence split + join and never `replace`), a placeholder
+   * without a value stays as it is (blanking it would delete the information
+   * the sentence carries), and a `null` / `undefined` value counts as "no
+   * value" - never as the word `null` printed on screen.
+   *
+   * @param {string} text the template
+   * @param {object} [params] the values
+   * @returns {string}
+   */
+  function fillPlaceholders(text, params) {
+    if (typeof text !== 'string' || text === '') return text
+    if (!params || typeof params !== 'object') return text
+    let out = text
+    for (const [name, value] of Object.entries(params)) {
+      if (value === null || value === undefined || value === '') continue
+      out = out.split('{' + name + '}').join(String(value))
+    }
+    return out
+  }
+
+  /**
+   * One text out of the built-in dictionaries.
+   *
+   * The dictionary of the current language wins; the Chinese original is the
+   * second choice (a human-readable text beats a key name); the last resort
+   * is the "missing" line - NEVER the key itself.
+   *
+   * @param {string} path the dotted path of the entry
+   * @param {object} [params] the placeholder values
+   * @returns {string}
+   */
+  function t(path, params) {
+    const language = currentLanguage()
+    const table = language === 'en' ? EN : ZH
+    let text = pick(table, path)
+    if (typeof text !== 'string' || text === '') text = pick(ZH, path)
+    if (typeof text !== 'string' || text === '') text = pick(table, 'text.missing')
+    if (typeof text !== 'string' || text === '') text = pick(ZH, 'text.missing')
+    if (typeof text !== 'string') text = ''
+    return fillPlaceholders(text, params)
+  }
+
+  /**
+   * The translator of this plugin, on the global namespace.
+   *
+   * The same global namespace `dsh-autorestart` uses: it exists as soon as
+   * this file is evaluated (no factory call needed), so the wording can be
+   * asked for in a given language without mounting the panel.
+   */
+  globalThis.__dshCuaDriverIndicatorClient = Object.assign(
+    globalThis.__dshCuaDriverIndicatorClient || {},
+    { t, currentLanguage },
+  )
 
   /** The slim line that stays after the user said no. */
   const DECLINED_STYLE = {
@@ -254,7 +460,7 @@
       function failureText(answer, fallback) {
         const message = answer && answer.message ? answer.message : fallback
         const code = answer && answer.code ? answer.code : ''
-        return code === '' ? message : message + '（' + code + '）'
+        return code === '' ? message : message + t('text.withCode', { code })
       }
 
       function ProviderPanel() {
@@ -308,13 +514,15 @@
             const done = answer.ok === true && answer.verified !== false
             setMessage(answer.ok === true
               ? (answer.message || (done
-                ? `已经装上了，${RESTART_HINT}`
-                : '装上了，但两行官方插件还没都到位，重启后再看。'))
-              : failureText(answer, '安装没有成功。'))
+                ? t('install.done')
+                : t('install.partial')))
+              : failureText(answer, t('install.failed')))
             if (answer.state) setState(answer.state)
             else await refresh()
           } catch (error) {
-            setMessage('安装请求没有送到宿主：' + (error && error.message ? error.message : String(error)))
+            setMessage(t('install.requestFailed', {
+              error: error && error.message ? error.message : String(error),
+            }))
           } finally {
             setBusy(false)
           }
@@ -337,12 +545,14 @@
           try {
             const answer = await postAction('enable')
             setMessage(answer.ok === true
-              ? (answer.message || '已经启用了。')
-              : failureText(answer, '启用没有成功。'))
+              ? (answer.message || t('enable.done'))
+              : failureText(answer, t('enable.failed')))
             if (answer.state) setState(answer.state)
             else await refresh()
           } catch (error) {
-            setMessage('启用请求没有送到宿主：' + (error && error.message ? error.message : String(error)))
+            setMessage(t('enable.requestFailed', {
+              error: error && error.message ? error.message : String(error),
+            }))
           } finally {
             setBusy(false)
           }
@@ -354,10 +564,12 @@
           try {
             const answer = await postAction('restart')
             setMessage(answer.ok === true
-              ? (answer.message || '已经排了一次重启。')
-              : failureText(answer, '重启没有排上。'))
+              ? (answer.message || t('restart.done'))
+              : failureText(answer, t('restart.failed')))
           } catch (error) {
-            setMessage('重启请求没有送到宿主：' + (error && error.message ? error.message : String(error)))
+            setMessage(t('restart.requestFailed', {
+              error: error && error.message ? error.message : String(error),
+            }))
           } finally {
             setBusy(false)
           }
@@ -366,56 +578,56 @@
         // What the panel draws: a card, the declined line, or nothing at all.
         // The host did not answer -> there is nothing to ask about.
         if (!state) {
-          return declined ? h('div', { style: DECLINED_STYLE }, TEXT.missing.declined) : null
+          return declined ? h('div', { style: DECLINED_STYLE }, t('missing.declined')) : null
         }
         // The channel is there: this plugin renders nothing at all.
         if (state.status === STATUS.AVAILABLE) return null
 
         if (state.status === STATUS.MISSING) {
-          if (declined) return h('div', { style: DECLINED_STYLE }, TEXT.missing.declined)
+          if (declined) return h('div', { style: DECLINED_STYLE }, t('missing.declined'))
           return h('div', { style: OVERLAY_STYLE },
             h('div', { style: CARD_STYLE, role: 'dialog', 'aria-modal': 'true' },
-              h('h2', { style: TITLE_STYLE }, TEXT.missing.title),
-              ...TEXT.missing.body.map((line, index) => h('p', { key: index, style: BODY_STYLE }, line)),
+              h('h2', { style: TITLE_STYLE }, t('missing.title')),
+              ...[0, 1, 2].map((index) => h('p', { key: index, style: BODY_STYLE }, t('missing.body.' + index))),
               h('div', { style: ACTIONS_STYLE },
                 h('button', {
                   type: 'button', style: PRIMARY_BUTTON, disabled: busy, onClick: onInstall,
-                }, TEXT.missing.install),
+                }, t('missing.install')),
                 h('button', {
                   type: 'button', style: SECONDARY_BUTTON, disabled: busy, onClick: onDismiss,
-                }, TEXT.missing.dismiss)),
+                }, t('missing.dismiss'))),
               message ? h('div', { style: MESSAGE_STYLE }, message) : null))
         }
 
         if (state.status === STATUS.DISABLED) {
           return h('div', { style: OVERLAY_STYLE },
             h('div', { style: CARD_STYLE, role: 'dialog', 'aria-modal': 'true' },
-              h('h2', { style: TITLE_STYLE }, TEXT.disabled.title),
-              h('p', { style: BODY_STYLE }, TEXT.disabled.body),
-              h('p', { style: NOTE_STYLE }, TEXT.disabled.note),
+              h('h2', { style: TITLE_STYLE }, t('disabled.title')),
+              h('p', { style: BODY_STYLE }, t('disabled.body')),
+              h('p', { style: NOTE_STYLE }, t('disabled.note')),
               h('div', { style: ACTIONS_STYLE },
                 h('button', {
                   type: 'button', style: PRIMARY_BUTTON, disabled: busy, onClick: onEnable,
-                }, TEXT.disabled.action)),
-              h('p', { style: NOTE_STYLE }, TEXT.disabled.hint),
+                }, t('disabled.action'))),
+              h('p', { style: NOTE_STYLE }, t('disabled.hint')),
               message ? h('div', { style: MESSAGE_STYLE }, message) : null))
         }
 
         if (state.status === STATUS.INACTIVE) {
           return h('div', { style: OVERLAY_STYLE },
             h('div', { style: CARD_STYLE, role: 'dialog', 'aria-modal': 'true' },
-              h('h2', { style: TITLE_STYLE }, TEXT.inactive.title),
-              h('p', { style: BODY_STYLE }, TEXT.inactive.body),
+              h('h2', { style: TITLE_STYLE }, t('inactive.title')),
+              h('p', { style: BODY_STYLE }, t('inactive.body')),
               h('div', { style: VERSIONS_STYLE },
-                h('div', null, '已装官方包版本：' + (state.officialPackageVersion || 'unknown')),
-                h('div', null, '宿主版本：' + (state.hostVersion || 'unknown'))),
-              h('p', { style: NOTE_STYLE }, TEXT.inactive.note),
+                h('div', null, t('version.installed', { version: state.officialPackageVersion || 'unknown' })),
+                h('div', null, t('version.host', { version: state.hostVersion || 'unknown' }))),
+              h('p', { style: NOTE_STYLE }, t('inactive.note')),
               state.autorestartAvailable === true
                 ? h('div', { style: ACTIONS_STYLE },
                   h('button', {
                     type: 'button', style: PRIMARY_BUTTON, disabled: busy, onClick: onRestart,
-                  }, TEXT.inactive.restart))
-                : h('p', { style: NOTE_STYLE }, TEXT.inactive.noAutorestart),
+                  }, t('inactive.restart')))
+                : h('p', { style: NOTE_STYLE }, t('inactive.noAutorestart')),
               message ? h('div', { style: MESSAGE_STYLE }, message) : null))
         }
 
@@ -424,8 +636,12 @@
       }
 
       return {
-        inject: ['slots'],
+        // 'locale' is the host's language service: it knows which language the
+        // user picked, and it is read at call time. The same pair of services
+        // `dsh-autorestart` asks for.
+        inject: ['slots', 'locale'],
         apply(ctx) {
+          localeService = ctx?.locale ?? null
           ctx.slots.inject('shell.overlay', () => ctx.slots.register({
             name: 'shell.overlay',
             id: 'cua-driver-indicator-provider',

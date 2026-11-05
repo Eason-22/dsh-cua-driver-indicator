@@ -1,7 +1,8 @@
 # dsh-cua-driver-indicator · 维护者说明（中文）
 
 > 这份文档给**维护者与排障的人**看。用户向的完整说明在仓库根目录的
-> [README.md](../README.md)（英文版 [README.en.md](../README.en.md)）；
+> [README.md](../README.md)（**英文**，默认正文）与 [README.zh.md](../README.zh.md)（**中文**）；
+> [README.en.md](../README.en.md) 现在只是一页「正文已迁到 README.md」的说明页；
 > 发版自检清单在 [self-check.md](self-check.md)；版本历史在 [CHANGELOG.md](../CHANGELOG.md)。
 
 - **当前版本**：**0.7.0**（与 `package.json` 的 `version` 一致）

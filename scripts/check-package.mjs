@@ -68,6 +68,7 @@ const REQUIRED = [
   'cordis.patch.yml',
   'LICENSE',
   'README.md',
+  'README.zh.md',
 ];
 
 /**
