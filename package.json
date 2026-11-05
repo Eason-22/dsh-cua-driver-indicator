@@ -1,7 +1,7 @@
 {
   "name": "dsh-cua-driver-indicator",
-  "version": "0.6.5",
-  "description": "Visibility layer for DSH's built-in Cua Driver channel (cua_driver_native__*): shows a non-activating screen-edge banner and pointer halo while the official tools operate the desktop, and turns a physical Esc into a real stop for that call series.",
+  "version": "0.7.0",
+  "description": "Visibility layer for DSH's built-in Cua Driver channel (cua_driver_native__*): shows a non-activating screen-edge banner and pointer halo while the official tools operate the desktop, turns a physical Esc into a real stop, and when that official channel is missing it asks in the web UI whether to install it (one-click install through the host's own pipeline, a real verification afterwards, and a restart left to the user). Windows only.",
   "keywords": [
     "dsh",
     "dsh-plugin",
@@ -9,16 +9,21 @@
     "cua-driver",
     "cua",
     "computer-use",
+    "computer-use-install",
     "desktop",
     "indicator",
     "banner",
     "esc-stop",
+    "install",
+    "one-click-install",
+    "provider",
     "windows"
   ],
   "type": "module",
   "main": "lib/index.js",
   "files": [
     "lib/",
+    "client.js",
     "scripts/",
     "scripts/check-package.mjs",
     "docs/",
@@ -26,15 +31,24 @@
     "README.md",
     "THIRD_PARTY.md",
     "LICENSE",
-    "LICENSE-THIRD-PARTY"
+    "LICENSE-THIRD-PARTY",
+    "!provider-bundle"
   ],
   "exports": {
     ".": "./lib/index.js",
+    "./client": "./client.js",
     "./package.json": "./package.json"
   },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
     }
   },
   "engines": {

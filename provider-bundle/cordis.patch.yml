@@ -1,0 +1,32 @@
+# dsh-cua-driver-indicator-provider — the provider bundle layer.
+#
+# It inserts the two official rows of DSH's computer-control channel:
+#
+#   computer-use-registry           @deepseek-ai/dsh-computer-use
+#   computer-use-cua-driver-native  @deepseek-ai/dsh-experimental-computer-use-cua-driver-native
+#
+# The row ids are the ones the official composition uses, so the rows land
+# exactly where the host expects them and the official tools register
+# themselves as `cua_driver_native__*`.
+#
+# The bundle carries NO code of its own: it is a dependency list plus these
+# two rows. It is published as its own npm package so that it can be
+# updated independently of dsh-cua-driver-indicator.
+
+# These two rows are the official opt-in rows of the computer-control
+# channel, and their switch has to be written INSIDE the insert item: a row
+# that leaves `disabled` out is inserted in the DISABLED state. The install
+# then succeeds, the two rows are on the machine, and the official tools
+# still never show up - the user clicks "install" and it still does not
+# work (the indicator reports "installed but disabled").
+#
+# Overriding them from a separate `- id: ...` entry does not work either:
+# the host skips a patch that matches no row, and `plugin_manager` answers
+# `overridden`. So the switch belongs here, on the insert item itself.
+- insert:
+    - id: computer-use-registry
+      name: '@deepseek-ai/dsh-computer-use'
+      disabled: false
+    - id: computer-use-cua-driver-native
+      name: '@deepseek-ai/dsh-experimental-computer-use-cua-driver-native'
+      disabled: false

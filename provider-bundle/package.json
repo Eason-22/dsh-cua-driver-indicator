@@ -1,0 +1,37 @@
+{
+  "name": "dsh-cua-driver-indicator-provider",
+  "version": "1.0.0",
+  "description": "Provider bundle for dsh-cua-driver-indicator: it inserts the two official DSH computer-control rows so that the official cua_driver_native__* tools exist. Published as its own npm package, independently of dsh-cua-driver-indicator.",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "computer-use",
+    "cua-driver",
+    "provider-bundle"
+  ],
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-computer-use": "next",
+    "@deepseek-ai/dsh-experimental-computer-use-cua-driver-native": "next"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "os": [
+    "win32"
+  ]
+}

@@ -23,6 +23,27 @@
 
 ---
 
+> **0.7.0：缺官方电脑控制插件时，弹窗问你要不要装**
+>
+> 用户实机反馈："装了这个插件，横幅没出来。"——查下去是**官方那两行插件根本没装**，
+> 而本插件只画那条通道的提示条：通道不在，就没有东西可画。
+>
+> - **五态检测**（`lib/provider.mjs`，纯逻辑可单测）：`available` / `installed-disabled` /
+>   `installed-inactive` / `missing` / `unknown`。状态**实时复检**，不是启动时缓存的。
+> - **`missing` 时弹窗问你**（用户确认后的文案）：标题「本插件需要官方的「电脑控制」插件
+>   才能工作」，正文三句，按钮「安装官方电脑控制插件」/「暂不安装」；选了「暂不安装」
+>   → 「已跳过。本插件当前不可用，下次启动会再提醒一次。」
+> - **一键安装**：走**宿主自己的插件管线**，现拉官方当前发布的版本（代码里不写死任何
+>   官方包的精确版本号）。
+> - **装完真验**：重读宿主的插件清单——**两行都在、且都是启用状态**才算装好；只装上一行
+>   不算。
+> - **四种说法分开讲**：装好了 / 只装上一行（半装）/ 改动被另一层配置覆盖 / 安装失败，
+>   各有自己的提示，不含糊成一句"装好了"。
+> - **重启交给用户**：装完提示需要重启一次 DSH 才生效；宿主上装了自动重启插件时，
+>   `installed-inactive` 卡片会给「立即重启」按钮。
+> - **仅 Windows**：官方通道的原生实现是 Windows 上的 Cua Driver；
+>   **WSL 托管实例 / macOS / Linux 不支持，本插件也不在那些平台上实测**。
+
 > **0.6.5：说明「横幅画在哪台机器上」**
 >
 > 用户问："WSL 不是 Windows 的子系统吗？要控制也只能控制 Windows 桌面吧？"
@@ -225,6 +246,76 @@ cua-driver-indicator: takeover indicator is Windows-only; disabled on linux
 
 其余功能全部退场，不报错、不崩溃。
 
+## 它依赖什么：DSH 官方的电脑控制插件
+
+本插件只画接管提示条。它画的那条通道是 **DSH 官方的电脑控制通道**
+（工具名 `cua_driver_native__*`），而官方通道在默认的 composition 里**不存在**。
+
+所以本插件在启动时会检查它，缺了就**在网页里弹窗问你**：
+
+| 状态 | 弹窗里说什么 | 你能做什么 |
+| --- | --- | --- |
+| `available` | **什么都不显示** | —— 官方通道在，横幅照常工作 |
+| `missing` | 「本插件需要官方的「电脑控制」插件才能工作」 | 「安装官方电脑控制插件」/「暂不安装」 |
+| `installed-disabled` | 「官方电脑控制插件装了，但没有启用」 | 「去设置页启用」 |
+| `installed-inactive` | 「官方电脑控制插件装了，但工具没有出现」 | 「立即重启」（装了自动重启插件时才有） |
+| `unknown` | 不弹 | 宿主没回答，插件不乱猜 |
+
+- **不安装的话本插件将不可用**：没有官方通道，就没有东西可画，官方桌面工具也用不了。
+  选了「暂不安装」之后，左下角留一行字说明这件事，不会再弹第二次（下次启动还会问）。
+- **每次启动都问**：网页打开时弹窗会出现一次；官方通道在接下来的任何时刻出现
+  （比如你手动装了），弹窗会自己关掉——因为状态是**实时复检**的，不是启动时缓存的。
+- **只支持 Windows**：官方通道的原生实现是 Windows 上的 Cua Driver。
+  **macOS / Linux / WSL 托管实例不支持，本插件也不在那些平台上实测**。
+- **装了但没生效**时，弹窗会给出两个真实读数：**已装官方包版本**与**宿主版本**，
+  方便你看出版本漂移；读不到就写 `unknown`，不猜。
+  官方包**不由某个 bundle 提供**时，「已装官方包版本」就是 `unknown`：宿主没有按包名
+  暴露这个版本，插件不去猜一个数字出来。
+
+### 缺官方电脑控制插件时的弹窗与一键安装
+
+没有官方通道时，网页里会弹出这张卡片（`missing` 状态）：
+
+- **标题**：「本插件需要官方的「电脑控制」插件才能工作」
+- **正文**：
+  1. 检测到你还没安装（或没有启用）DSH 官方的电脑控制插件。
+  2. 本插件只是它的「显示器」——屏幕上的横幅、按 Esc 中断，全靠它来驱动电脑。它不在，
+     本插件就完全用不了：不是功能少一点，而是没有任何东西可显示。
+  3. 装好之后要重启一次 DSH 才会生效。
+- **按钮**：「安装官方电脑控制插件」/「暂不安装」。选「暂不安装」之后，左下角留一行
+  「已跳过。本插件当前不可用，下次启动会再提醒一次。」
+
+点「安装官方电脑控制插件」之后：
+
+- 安装**走宿主自己的插件管线**，现拉官方当前发布的版本——**本仓库的代码里不出现任何官方包
+  的精确版本号**（官方包跟着宿主走，写死版本号必然过时）。
+- 装完**重读宿主的插件清单做真验**：**两行都在、且都是启用状态**才算装好；只装上一行
+  不算，那种情况会单独告诉你「装上了一部分，通道还不可用」，不会含糊成一句"装好了"。
+- **重启由你决定**：插件只提示需要重启一次 DSH 才生效；宿主上装了自动重启插件时，
+  `installed-inactive` 卡片会额外给一个「立即重启」按钮。
+
+**仅 Windows**：官方通道的原生实现是 Windows 上的 Cua Driver。
+**WSL 托管实例 / macOS / Linux 不支持，本插件也不在那些平台上实测。**
+
+### 安装包是独立发布的
+
+要装的东西是一个**独立的 npm 包**：`dsh-cua-driver-indicator-provider`（provider bundle）。
+
+- 它的源码在本仓库的 [`provider-bundle/`](provider-bundle) 目录里，**但不随本插件发布**
+  （本插件 `package.json` 的 `files` 里没有它，`scripts/check-package.mjs` 会断言这一点）。
+- 本插件只按「**包名 + 版本范围**」引用它（默认 `dsh-cua-driver-indicator-provider@>=1`），
+  版本范围写在配置里，可以改。
+- **本仓库的代码里不出现任何官方包的精确版本号**：官方包跟着宿主走，写死版本号必然过时。
+  provider bundle 对两个官方包的依赖写的是**发布通道**（`next`），理由见
+  [provider-bundle/README.md](provider-bundle/README.md)。
+- **卸载本插件不会移除已装的官方两行**：那两行属于 provider bundle，不属于本插件。
+
+### 版本漂移怎么办
+
+- 官方包升级 → provider bundle 的依赖是通道名，不用改；必要时重启 DSH 即可。
+- provider bundle 升级 → 本插件不用改，也不用重发。
+- 本插件升级 → 与官方包无关。
+
 ## 它做什么
 
 1. **亮条**：官方通道第一次真正操作桌面时，在屏幕顶部（或底部）出现一条不抢焦点、
@@ -298,6 +389,9 @@ cua_driver_native__*)
     indicatorIdleMs: 1200             # 收起前的淡出延时（200–3000 毫秒）
     idleMs: 30000                     # 空闲多久视为控制结束（毫秒）
     stopOnEscape: true                # 物理 Esc 停止
+    providerCheckEnabled: true        # 检测官方电脑控制插件，缺失时弹窗询问
+    providerBundle: dsh-cua-driver-indicator-provider   # 独立安装包名
+    providerBundleRange: '>=1'        # 安装包版本范围（不写死版本号）
 ```
 
 > `goalTemplate` 在 0.3.0 里描述的是整条横幅（`DSH 基于「{goal}」正在控制电脑`），
@@ -311,9 +405,13 @@ cua_driver_native__*)
 | `lib/index.js` | 监听 `tools/execute`、维护提示显隐、组装横幅（会话 + 动作 + 目标）、**软强制门**（未声明目标先退回一次）、从宿主取会话标题、拉起并驱动 Windows 画面层、把 Esc 事件接到停止逻辑、注册 `computer_control_goal` 工具、跑"官方工具名"自检 |
 | `lib/goal.mjs` | 纯逻辑：目标摘要、人话判定（机器话不进目标）、问句/抱怨判定、动作词映射表、横幅拼装、会话身份回落、按会话存放的目标状态（含"有没有模型声明的目标"）、**强制门判定**（放行/退回、按轮次的拦截状态、目标存储键）与**闸门接线**（`evaluateGoalGate` 评估 + `runGoalGate` 记住本轮 + `execTurn` 取轮次 + `gateStateKey` 统一键）、消息来源判定。可脱离 DSH 单测 |
 | `lib/series.mjs` | 纯状态机：接管租约、在途调用登记、Esc 停止与封禁范围。可脱离 DSH 单测 |
+| `lib/provider.mjs` | 纯逻辑：**官方电脑控制通道的五态检测**（available / installed-disabled / installed-inactive / missing / unknown）、安装目标（包名 + 版本范围）、安装结果与重启结果的错误码映射。可脱离 DSH 单测 |
+| `client.js` | 浏览器半边：官方通道缺失时的**居中弹窗**（安装 / 暂不安装 / 去设置页启用 / 立即重启）、状态实时复检；通道在时**完全不渲染** |
+| `provider-bundle/` | **独立发布**的 provider bundle 源码（不进本插件的 npm 包），见 [provider-bundle/README.md](provider-bundle/README.md) |
 | `scripts/windows-takeover.*` | Windows 画面层（复制自上游，见 `THIRD_PARTY.md`） |
 | `tests/series.test.mjs` | `node --test` 可跑的单元测试（租约与停止语义） |
 | `tests/goal.test.mjs` | `node --test` 可跑的单元测试（目标摘要、人话判定、动作词、横幅拼装、来源过滤、跨轮保留、模型目标标志、**强制门五条语义**、**闸门接线用例**、**记住本轮/缺轮次用例**） |
+| `tests/provider.test.mjs` | `node --test` 可跑的单元测试（**五态检测**、安装/重启错误码、**源码里没有官方包精确版本号**、provider bundle 不随包发布） |
 
 ## 验证
 
@@ -321,8 +419,11 @@ cua_driver_native__*)
 node --check lib/index.js
 node --check lib/goal.mjs
 node --check lib/series.mjs
+node --check lib/provider.mjs
 node --test tests/series.test.mjs
 node --test tests/goal.test.mjs
+node --test tests/provider.test.mjs
+node scripts/check-package.mjs
 ```
 
 ## 许可证

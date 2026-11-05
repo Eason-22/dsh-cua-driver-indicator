@@ -133,6 +133,89 @@ cua-driver-indicator: takeover indicator is Windows-only; disabled on linux
 
 Everything else steps aside: no error, no crash.
 
+## What it depends on: DSH's official computer-control channel
+
+This plugin only draws the takeover banner. The channel it draws for is **DSH's official
+computer-control channel** (tool names `cua_driver_native__*`), and that channel does **not**
+exist in the default composition.
+
+So the plugin checks for it at start-up and, when it is missing, **asks you in the web UI**:
+
+| State | What the popup says | What you can do |
+| --- | --- | --- |
+| `available` | **nothing is rendered at all** | —— the channel is there, the banner works |
+| `missing` | "本插件需要官方的「电脑控制」插件才能工作" | "安装官方电脑控制插件" / "暂不安装" |
+| `installed-disabled` | "官方电脑控制插件装了，但没有启用" | "去设置页启用" |
+| `installed-inactive` | "官方电脑控制插件装了，但工具没有出现" | "立即重启" (only when the restart plugin is installed) |
+| `unknown` | no popup | the host did not answer; the plugin does not guess |
+
+- **Without it this plugin is unusable**: there is no channel, so there is nothing to draw, and
+  the official desktop tools cannot be used either. After "暂不安装" a one-line notice stays in
+  the corner, and the question comes back on the next start.
+- **The question comes back on every start**: the state is re-read **live** (not cached from
+  start-up), so the popup closes itself as soon as the official channel shows up.
+- **Windows only**: the native implementation of the official channel is the Windows Cua
+  Driver. **macOS / Linux / a hosted instance inside WSL are not supported, and this plugin is
+  not tested there.**
+- When the channel is **installed but not working**, the popup shows two real readings: the
+  **version of the installed official package** and the **host version**, so a version drift is
+  visible. A reading that cannot be read is reported as `unknown`, never guessed.
+  When the official packages are **not provided by a bundle**, "已装官方包版本" is `unknown`: the
+  host does not expose that version by package name, and the plugin does not make one up.
+
+### The popup and the one-click install when the official plugin is missing
+
+When the official channel is missing, the web UI shows this card (the `missing` state):
+
+- **Title**: 「本插件需要官方的「电脑控制」插件才能工作」
+- **Body**:
+  1. 检测到你还没安装（或没有启用）DSH 官方的电脑控制插件。
+  2. 本插件只是它的「显示器」——屏幕上的横幅、按 Esc 中断，全靠它来驱动电脑。它不在，本插件
+     就完全用不了：不是功能少一点，而是没有任何东西可显示。
+  3. 装好之后要重启一次 DSH 才会生效。
+- **Buttons**: 「安装官方电脑控制插件」 / 「暂不安装」. After 「暂不安装」 a one-line notice
+  stays in the corner: 「已跳过。本插件当前不可用，下次启动会再提醒一次。」
+
+After 「安装官方电脑控制插件」:
+
+- The install goes **through the host's own plugin pipeline** and pulls whatever the official
+  packages currently publish — **no fixed version of an official package appears in this
+  repository** (they move with the host, so a pinned version would be wrong twice a year).
+- The install is then **verified for real**: the host's own plugin list is read again, and only
+  **both rows being there AND both being enabled** counts as installed. One row alone does not,
+  and that case says so ("装上了一部分，通道还不可用") instead of claiming it worked.
+- **The restart is the user's call**: the plugin says that DSH has to be restarted once; when the
+  host has the auto-restart plugin, the `installed-inactive` card also offers an
+  「立即重启」 button.
+
+**Windows only**: the native implementation of the official channel is the Windows Cua Driver.
+**A hosted instance inside WSL, macOS and Linux are not supported, and this plugin is not tested
+there.**
+
+### The install package is published on its own
+
+What gets installed is an **independent npm package**: `dsh-cua-driver-indicator-provider`
+(a provider bundle).
+
+- Its source lives in [`provider-bundle/`](provider-bundle) of this repository, but it is
+  **not published with this plugin** (it is not in this package's `files`, and
+  `scripts/check-package.mjs` asserts that).
+- This plugin refers to it by **package name + version range** only (by default
+  `dsh-cua-driver-indicator-provider@>=1`); the range is configuration and can be changed.
+- **No fixed version of an official package appears in this repository**: the official packages
+  move with the host, so a pinned version would be wrong twice a year. The provider bundle
+  depends on the two official packages through their **release channel** (`next`); the reason is
+  written down in [provider-bundle/README.md](provider-bundle/README.md).
+- **Removing this plugin does not remove the two official rows**: they belong to the provider
+  bundle, not to this plugin.
+
+### When the versions drift
+
+- The official packages move → the provider bundle depends on a channel name, nothing to change;
+  a DSH restart is enough.
+- The provider bundle moves → this plugin does not change and does not need a new release.
+- This plugin moves → unrelated to the official packages.
+
 ## Platform limits
 
 - **Windows only.** The package declares `"os": ["win32"]`, so pnpm refuses to install it on
@@ -164,6 +247,9 @@ Change it in the profile's `cordis.patch.yml` and restart DSH:
     indicatorIdleMs: 1200             # fade-out delay (200–3000 ms)
     idleMs: 30000                     # idle time that ends control (ms)
     stopOnEscape: true                # physical Esc stops
+    providerCheckEnabled: true        # check the official channel and ask when it is missing
+    providerBundle: dsh-cua-driver-indicator-provider   # the independent provider bundle
+    providerBundleRange: '>=1'        # its version range (never a pinned version)
 ```
 
 ## Self-check: you should notice if the official tool names change
@@ -194,10 +280,14 @@ the desktop lease.
 | `lib/index.js` | Listens to `tools/execute`, keeps the banner in sync, assembles it (session + action + goal), runs the **goal gate**, reads the session title from the host, drives the Windows picture layer, wires Esc to the stop logic, registers the `computer_control_goal` tool, and runs the official-tool-name self-check. |
 | `lib/goal.mjs` | Pure logic: goal summaries, human-vs-machine text, questions and complaints, the action-word table, banner assembly, session identity fallback, per-session goal state, **the gate decision and its wiring**, and message-source detection. Import-free, so plain node can test it. |
 | `lib/series.mjs` | Pure state machine: the takeover lease, in-flight call registration, the Esc stop and its scope. Import-free, so plain node can test it. |
+| `lib/provider.mjs` | Pure logic: the **five states of the official channel** (available / installed-disabled / installed-inactive / missing / unknown), the install target (package name + version range), and the error codes of the install and restart answers. Import-free, so plain node can test it. |
+| `client.js` | The browser half: the **centred popup** when the official channel is missing (install / not now / go enable it / restart now), with a live re-read of the state; it renders **nothing at all** when the channel is there. |
+| `provider-bundle/` | The source of the **independently published** provider bundle (not part of this package); see [provider-bundle/README.md](provider-bundle/README.md). |
 | `scripts/windows-takeover.*` | The Windows picture layer (copied from upstream, see `THIRD_PARTY.md`). |
 | `tests/goal.test.mjs` | `node --test` unit tests (goal summaries, human-vs-machine text, action words, banner assembly, source filtering, the goal gate and its wiring). |
 | `tests/series.test.mjs` | `node --test` unit tests (lease and stop semantics). |
-| `scripts/check-package.mjs` | Checks what `npm pack` would ship (no `node_modules/`, no `*.tgz`, no `*.bak-*`, and the required files are in). |
+| `tests/provider.test.mjs` | `node --test` unit tests (the **five states**, the install and restart error codes, **no fixed official version in the source**, the provider bundle is not published with this package). |
+| `scripts/check-package.mjs` | Checks what `npm pack` would ship (no `node_modules/`, no `*.tgz`, no `*.bak-*`, **no `provider-bundle/`**, no dependency on an official package, no fixed official version in the source, and the required files are in). |
 | `docs/self-check.md` | The pre-release checklist. |
 
 ## Tests
@@ -209,12 +299,16 @@ the pure logic modules only.
 node --check lib/index.js
 node --check lib/goal.mjs
 node --check lib/series.mjs
+node --check lib/provider.mjs
 node --test tests/goal.test.mjs
 node --test tests/series.test.mjs
+node --test tests/provider.test.mjs
+node scripts/check-package.mjs
 ```
 
-CI (`.github/workflows/tests.yml`) runs the two test files on Node 20 and on Node 22 for every
-push and pull request.
+CI (`.github/workflows/tests.yml`) runs the goal and series test files on Node 20 and on Node 22 for
+every push and pull request. `tests/provider.test.mjs` is not in that workflow yet — it has to be
+added there before the next release (the file is outside this change's scope).
 
 Contributions, the change rules and the release flow are in
 [CONTRIBUTING.md](CONTRIBUTING.md); the version history is in [CHANGELOG.md](CHANGELOG.md).
