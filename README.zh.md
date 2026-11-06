@@ -2,13 +2,29 @@
 
 [English](README.md) | 中文
 
-> **0.7.1：界面双语、README 默认英文**
+> **0.8.0：桌面上多了四件精度工具**
 >
-> - **界面文案跟随宿主语言**：面板先读宿主的语言服务，其次读浏览器语言，两者都拿不到时
->   **回退中文**。中文文案一个字没改，英文是新增的一套；外国用户看到的是英文卡片。
-> - **这份文档现在是中文版**，默认正文（英文）在 [README.md](README.md)，两边顶部互链。
+> - **`cua_snap_click`**：点之前先看落点有没有被别的窗口挡住（挡住就返回 `POINT_COVERED`，
+>   不点）；点完按三档判定界面变化（`changed` / `changed_elsewhere` / `unchanged`），
+>   只有「没变化」而且这一步是幂等的（`expect_change=idempotent`）时，才按不超过 4 像素的偏移重试一次。
+> - **`cua_snap_click_named`**：按控件的可访问名字定位并点击。名字比对前会去掉表情、符号和括号里的
+>   内容，然后分三级比较（完全相等 > 一个包含另一个 > 只共享开头）；同名命中多个时**不猜**，
+>   返回 `AMBIGUOUS_TARGET` 和候选清单；命中的控件都在屏幕外时返回 `NOT_VISIBLE`（先滚动到它）；
+>   窗口本身找不到（`WINDOW_NOT_FOUND`）和控件找不到（`TARGET_NOT_FOUND`）分开报。
+> - **`cua_snap_sequence`**：最多 5 步连点，每一步都按名字找、都做同样的判定；任何一步失败就立刻停住，
+>   后面的步骤不会执行。
+> - **`cua_snap_wait_for`**：等某个名字的控件出现在屏幕上（`timeout_ms`，默认 5000 毫秒），
+>   控件出现就算成功，等到超时如实报 `WAIT_TIMEOUT`。
 >
-> 下面仍是 0.7.0 那套能力，行为没有变化。
+> **控件还可以按元素 ID 精确定位**：读一次界面，每个候选都带一个唯一的 `elementId`，所以同名的控件
+> 能分得清。ID 只活到下一次重读界面 —— 再用旧 ID 会得到 `ELEMENT_ID_EXPIRED`，不会静默改成
+> 按名字猜。控件支持 InvokePattern 时会在后台运行（`manner: invoke`，鼠标不动、窗口不抢前台），
+> 否则按坐标点（`manner: point`）。
+>
+> **只在 Windows 上可用**，和这个插件的其余部分一样。飞书这种自己画界面的 Chromium 应用不支持
+> InvokePattern，在那里只能按坐标点击。
+>
+> 下面仍是 0.7.x 那套能力，行为没有变化。
 
 给 **DSH 官方内置的 Cua Driver 通道**（`cua_driver_native__*`）补上"看得见 + 能喊停"这一层。
 
@@ -359,6 +375,48 @@ cua-driver-indicator: takeover indicator is Windows-only; disabled on linux
 - 只有物理按键有效；程序模拟的按键（例如 agent 自己发 `press_key`）不会被当作停止信号，
   否则 agent 一次按键就能把自己停掉。
 
+### cua_snap_click：点完要确认真的点到了
+
+内置的 Cua Driver 是「模型指哪就点哪」。实际用起来有两件事会出错：那个点**被别的窗口挡住**
+（弹窗、通知、叠放窗口的上半张），或者那个点**偏了几个像素**，落在小目标旁边。
+
+`cua_snap_click` 是另一种点法，它把这两件事都查一遍：
+
+| 参数 | 含义 |
+| --- | --- |
+| `x`、`y` | 屏幕上的点（物理像素），必填 |
+| `window_id` | 你要点的窗口：窗口句柄（十进制或 `0x` 十六进制）或窗口标题的一段；不填就用落点下面那扇窗。想要遮挡保护（判断落点是不是被别的窗口挡住）就必须点名窗口 |
+| `element_token` | 可选：快照里的元素标记；工具会核对落点上的元素是不是它，不一致会在结果里说明 |
+| `expect_change` | `idempotent`（界面应该变，且重复点安全）、`non_idempotent`（界面应该变，但重复点不安全）、`none`（本来就不该变）。默认 `non_idempotent` |
+
+它按这个顺序做三件事：
+
+1. **先问系统这个点上最上层是哪个窗口。** 给了 `window_id` 时，被点名的那扇窗就是这次
+   **唯一**允许点的窗。真的被别的窗盖住时它**不点**：返回 `verification: covered`、
+   `code: POINT_COVERED`，以及挡住它那个窗口的标题。`window_id` 根本不存在时是另一个错
+   （`WINDOW_NOT_FOUND`），**绝不会**退化成「点最上层那个窗」。不给 `window_id` 时，落点下面
+   那个窗就是目标——所以「可见但未激活」的窗是合法目标（结果里会说明）。
+2. **点了再看。** 三档答案，每一档都是关于屏幕的事实，不是猜测：
+   - `changed`：**落点附近**的像素、或落点元素的 UIA 状态变了：点击打在了该打的地方。
+   - `changed_elsewhere`：上面两样都没变，但**整窗变了**：这可能是这次点击的效果落在了别处
+     （状态栏、按钮旁边的标签）。这算成功——**绝不会**再点一次。
+   - `unchanged`：哪儿都没变：这次点击没有效果。
+   光标会**先**移到落点再读第一遍，所以「只是 hover 引起的重绘」也不算变化。
+3. **最多偏移 4 像素重试一次。** 只在答案是 `unchanged`（哪儿都没变）**并且**调用方声明了
+   `expect_change=idempotent` 时才重试。`changed` 与 `changed_elsewhere` 永远不会被点第二次。偏移必须落在落点那个元素里；重试点会**再核对一次**
+   元素，元素不对就不点第二次。不是幂等的目标（「发送」「付款」这类按钮）
+   **永远不会被点第二次**。
+4. **点下去之前再确认一次**落点仍属于目标窗口：中间冒出来的窗不会收到这次点击；
+   结果里会如实标注这次确认有没有发生。
+5. **element_token 对不上就拒点**（`ELEMENT_MISMATCH`）：照点会点到别的控件上。UIA 状态读不到时
+   **不算**「元素不符」——那只是不知道。
+
+返回是一个对象：`verification`（`changed` / `unchanged` / `covered`）、被挡时的 `POINT_COVERED`、
+挡住它的窗口，以及每次尝试的落点与「界面有没有变」。
+
+**它是什么、不是什么**：它不属于官方通道。横幅与目标闸仍然只跟官方工具走；
+`cua_snap_click` 就是「点一下，外面包了一层检查」。
+
 ## 自检：官方工具名变了要看得见
 
 本插件与官方通道的耦合点只有**一个**：官方工具名的前缀 `cua_driver_native__`。
@@ -408,6 +466,49 @@ cua_driver_native__*)
 > 0.4.0 起只描述**目标那一段**（默认 `目标：{goal}`）。如果你的 profile 里显式写过
 > 旧的 `goalTemplate`，删掉它即可回到默认值。
 
+### cua_snap_click_named：按名字点控件
+
+`cua_snap_click_named` 按控件上显示的文字找到它并点击。名字必须只命中**一个**控件：
+
+| 发生了什么 | 回答 |
+| --- | --- |
+| 只有一个控件叫这个名字 | 点它的中心；回答里有 `name`、`rect`、`unique: true` 和三档判定（`changed` / `changed_elsewhere` / `unchanged`） |
+| 好几个控件叫这个名字 | **不点**：返回 `code: AMBIGUOUS_TARGET` 和候选清单（名字、位置、相似度、层级）。绝不猜 |
+| 一个都没有 | **不点**：返回 `code: TARGET_NOT_FOUND` |
+| 点名的窗口本身不存在 | **不点**：返回 `code: WINDOW_NOT_FOUND` |
+| 同名的控件全都在屏幕外 | **不点**：返回 `code: NOT_VISIBLE` —— 先滚动到那个控件 |
+
+名字比对时会去掉装饰：表情、符号、括号里的内容都丢掉，大小写不敏感，所以
+`下载花名册` 能命中 `📥 下载花名册（全部人员）`。匹配分三级——去掉装饰后完全
+相等 > 一个包含另一个 > 只共享开头——只取最好的那一级。屏幕外（`IsOffscreen`）
+的控件不算候选：它点不到。
+
+点击本身和 `cua_snap_click` 一样：同样的遮挡检查（被挡就返回 `POINT_COVERED`、不点）、
+同样的三档判定、同样的重试规则（只有 `expect_change=idempotent` 且答案是 `unchanged` 时才重试）。
+
+### cua_snap_sequence：最多 5 步，按顺序走
+
+`cua_snap_sequence` 按顺序走一串名字。**最多 5 步**：更长的一律返回 `TOO_MANY_STEPS`、一步都不执行。
+每一步都按名字找到、点下去，并用同样的三档判定校验：`changed` 与 `changed_elsewhere` 都算成功、继续下一步；
+其他任何情况（找不到、同名多个、被挡、没变化）立刻停住。回答里说明停在第几步、**后面的步骤没有执行**。
+回答里的 `verification` 是整串的档位（每一步都是 changed_elsewhere 就还是 changed_elsewhere），每一步的判定都会逐条列出来。
+`expect_change` 不是 `idempotent` 的步骤永远不会被点第二次。
+
+这两个工具想要遮挡保护都得点名窗口：不填 `window_id` 就没有「你指定的窗口」可保护。
+
+### cua_snap_click_named：按元素 ID 操作，以及 cua_snap_wait_for：等控件出现
+
+> **只在 Windows 上可用**。飞书这种自己画界面的 Chromium 应用不支持 InvokePattern，在那里只能按坐标点击。
+
+`cua_snap_click_named` 除了名字还可以填 `element_id`。ID 是读界面时发给的
+（每个候选都有一个），所以同名的两个控件能分得开。**ID 只活到下一次重读界面**：
+之后再用就返回 `code: ELEMENT_ID_EXPIRED`，不会静默改成按名字猜。控件支持
+InvokePattern 时它在后台运行（`manner: invoke`，鼠标不移动）；不支持时按坐标点
+（`manner: point`），遮挡检查与三档判定和平时一样。
+
+`cua_snap_wait_for` 等某个名字的控件出现（`timeout_ms`，默认 5000）：出现了
+就回答 `found: true`，等到超时还没出现就如实报 `code: WAIT_TIMEOUT`。
+
 ## 结构
 
 | 文件 | 职责 |
@@ -415,10 +516,15 @@ cua_driver_native__*)
 | `lib/index.js` | 监听 `tools/execute`、维护提示显隐、组装横幅（会话 + 动作 + 目标）、**软强制门**（未声明目标先退回一次）、从宿主取会话标题、拉起并驱动 Windows 画面层、把 Esc 事件接到停止逻辑、注册 `computer_control_goal` 工具、跑"官方工具名"自检 |
 | `lib/goal.mjs` | 纯逻辑：目标摘要、人话判定（机器话不进目标）、问句/抱怨判定、动作词映射表、横幅拼装、会话身份回落、按会话存放的目标状态（含"有没有模型声明的目标"）、**强制门判定**（放行/退回、按轮次的拦截状态、目标存储键）与**闸门接线**（`evaluateGoalGate` 评估 + `runGoalGate` 记住本轮 + `execTurn` 取轮次 + `gateStateKey` 统一键）、消息来源判定。可脱离 DSH 单测 |
 | `lib/series.mjs` | 纯状态机：接管租约、在途调用登记、Esc 停止与封禁范围。可脱离 DSH 单测 |
+| `lib/snap-click.mjs` | 纯逻辑：**cua_snap_click** 工具——参数归一、重试偏移（最多 4 像素）、「界面到底变了没有」的判定、工具定义，以及与 Windows 助手对话的后端。可脱离 DSH 单测 |
 | `lib/provider.mjs` | 纯逻辑：**官方电脑控制通道的五态检测**（available / installed-disabled / installed-inactive / missing / unknown）、安装目标（包名 + 版本范围）、安装结果与重启结果的错误码映射。可脱离 DSH 单测 |
 | `client.js` | 浏览器半边：官方通道缺失时的**居中弹窗**（安装 / 暂不安装 / 去设置页启用 / 立即重启）、状态实时复检；通道在时**完全不渲染** |
 | `provider-bundle/` | **独立发布**的 provider bundle 源码（不进本插件的 npm 包），见 [provider-bundle/README.md](provider-bundle/README.md) |
 | `scripts/windows-takeover.*` | Windows 画面层（复制自上游，见 `THIRD_PARTY.md`） |
+| `scripts/manual-snap-click-scenario.ps1` | 真机场景：两个 WinForms 窗口（目标窗 + 盖住它的窗）、打印出来的坐标，以及运行脚本要读的几何文件 |
+| `scripts/manual-snap-click-run.mjs` | 用真的原生助手驱动那个场景，逐点打印工具的回答 |
+| `scripts/windows-snap-click.*` | **cua_snap_click** 的原生半边：窗口探测（这个点上最上层是谁）、窗口像素哈希与落点元素的 UIA 状态，以及真正的点击 |
+| `tests/snap-click.test.mjs` | `node --test` 可跑的单元测试（被挡就不点、点了有变化、没变化且非幂等时不重试、幂等时偏移 4 像素内只重试一次、工具定义） |
 | `tests/series.test.mjs` | `node --test` 可跑的单元测试（租约与停止语义） |
 | `tests/goal.test.mjs` | `node --test` 可跑的单元测试（目标摘要、人话判定、动作词、横幅拼装、来源过滤、跨轮保留、模型目标标志、**强制门五条语义**、**闸门接线用例**、**记住本轮/缺轮次用例**） |
 | `tests/provider.test.mjs` | `node --test` 可跑的单元测试（**五态检测**、安装/重启错误码、**源码里没有官方包精确版本号**、provider bundle 不随包发布） |
@@ -430,11 +536,31 @@ node --check lib/index.js
 node --check lib/goal.mjs
 node --check lib/series.mjs
 node --check lib/provider.mjs
+node --check lib/snap-click.mjs
 node --test tests/series.test.mjs
 node --test tests/goal.test.mjs
 node --test tests/provider.test.mjs
+node --test tests/snap-click.test.mjs
+node --test tests/
 node scripts/check-package.mjs
 ```
+
+### 真机场景（仅 Windows）
+
+`cua_snap_click` 的行为要对着**两个真实窗口**验，不只是对着假后端。场景脚本把窗口开起来、
+把坐标打印出来，并写进 `%TEMP%\\snap-click-geometry.json`；运行脚本用真的原生助手点这些点：
+
+```powershell
+powershell -NoProfile -STA -ExecutionPolicy Bypass -File scripts/manual-snap-click-scenario.ps1
+# 另一个 shell 里，等两个窗口都出来之后：
+node scripts/manual-snap-click-run.mjs
+```
+
+运行脚本对每个点都打印：`verification`（`changed` / `changed_elsewhere` / `unchanged` /
+`covered`）、`code`、有没有点、有没有重试、挡住它的是哪个窗口、以及点下去之前有没有再确认
+一次。点分别是：落点附近像素会变的按钮（`changed`）、效果落在旁边标签上的按钮
+（`changed_elsewhere`）、静态文字（点了什么也不会发生 -> `unchanged` 并且重试一次）、悬停变色但
+点击无效的面板，以及被遮挡窗口盖住的点（`covered`）。
 
 ## 许可证
 

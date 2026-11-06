@@ -5,7 +5,31 @@
 > [README.en.md](../README.en.md) 现在只是一页「正文已迁到 README.md」的说明页；
 > 发版自检清单在 [self-check.md](self-check.md)；版本历史在 [CHANGELOG.md](../CHANGELOG.md)。
 
-- **当前版本**：**0.7.0**（与 `package.json` 的 `version` 一致）
+- **当前版本**：**0.8.0**（与 `package.json` 的 `version` 一致）
+
+## 桌面精度工具（0.8.0 新增）
+
+宿主自带的官方通道（`cua_driver_native__*`）负责「把鼠标搬到某点」；0.8.0 给它补了四件
+更准的工具，解决「点歪」「点不到小目标」「同名按钮分不清」：
+
+- **`cua_snap_click`**：点之前查落点有没有被别的窗口挡住（挡住就返回 `POINT_COVERED`，不点）；
+  点完按三档判定界面变化（`changed` / `changed_elsewhere` / `unchanged`），没变化时按偏移重试一次
+  （只有 `expect_change=idempotent` 才会重试，非幂等目标绝不点第二次）。
+- **`cua_snap_click_named`**：按控件的可访问名字找它并点击。名字比对时会去掉表情、符号和括号里的内容
+  （所以「下载花名册」能命中「📥 下载花名册（全部人员）」）；同名命中多个时**不猜**，返回
+  `AMBIGUOUS_TARGET` 与候选清单；同名控件都在屏幕外时返回 `NOT_VISIBLE`，需要先滚动到它。
+- **`cua_snap_sequence`**：最多 5 步连点，每一步都按名字找、都做三档判定；任何一步失败立刻停住，
+  后面的步骤不会执行，结果里说明停在第几步。
+- **`cua_snap_wait_for`**：等某个名字的控件出现在屏幕上（`timeout_ms`，默认 5000 毫秒），
+  控件出现就算成功，等到超时如实报 `WAIT_TIMEOUT`。
+
+另外，读一次界面时每个候选都带一个唯一的 `elementId`，可以按 ID 精确操作（同名控件因此分得清）；
+ID 只活到下一次重读界面，旧 ID 会得到 `ELEMENT_ID_EXPIRED`，不会静默改成按名字猜。控件支持 InvokePattern 时
+会在后台运行（`manner: invoke`，鼠标不动），否则按坐标点（`manner: point`）。
+
+**限制**：这四件工具只在 Windows 上可用（原生那一半是 WinForms + UIA）；像飞书这种自己画界面的
+Chromium 应用不支持后台 InvokePattern，那里只能坐标点击。
+
 
 ## 插件与宿主之间：官方通道的状态路由
 

@@ -1,7 +1,7 @@
 {
   "name": "dsh-cua-driver-indicator",
-  "version": "0.7.1",
-  "description": "Visibility layer for DSH's built-in Cua Driver channel (cua_driver_native__*): shows a non-activating screen-edge banner and pointer halo while the official tools operate the desktop, turns a physical Esc into a real stop, and when that official channel is missing it asks in the web UI whether to install it (one-click install through the host's own pipeline, a real verification afterwards, and a restart left to the user). Windows only.",
+  "version": "0.8.0",
+  "description": "Visibility layer for DSH's built-in Cua Driver channel (cua_driver_native__*): shows a non-activating screen-edge banner and pointer halo while the official tools operate the desktop, turns a physical Esc into a real stop, and when that official channel is missing it asks in the web UI whether to install it (one-click install through the host's own pipeline, a real verification afterwards, and a restart left to the user). It also adds four precision tools for the desktop: cua_snap_click (checks that the point is not covered, verifies what the click changed and retries once), cua_snap_click_named (finds a control by its name), cua_snap_sequence (up to five clicks in a row) and cua_snap_wait_for (waits for a control to show up); controls can be addressed by element id and run in the background when the application supports it. Windows only.",
   "keywords": [
     "dsh",
     "dsh-plugin",
@@ -10,6 +10,11 @@
     "cua",
     "computer-use",
     "computer-use-install",
+    "snap-click",
+    "ui-automation",
+    "element-id",
+    "click",
+    "automation",
     "desktop",
     "indicator",
     "banner",
@@ -23,8 +28,11 @@
   "main": "lib/index.js",
   "files": [
     "lib/",
+    "lib/snap-click.mjs",
     "client.js",
     "scripts/",
+    "scripts/windows-snap-click.cs",
+    "scripts/windows-snap-click.ps1",
     "scripts/check-package.mjs",
     "docs/",
     "locale/",

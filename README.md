@@ -2,15 +2,37 @@
 
 English | [中文](README.zh.md)
 
-> **0.7.1: bilingual UI, English-first readme**
+> **0.8.0: four precision tools for the desktop**
 >
-> - **The UI follows the host language**: the panel reads the host's locale service first,
->   then the browser language, and falls back to **Chinese** when neither is available. The
->   Chinese wording is unchanged; English wording was added for every visible string.
-> - **This readme is now the English one**; the Chinese text lives in
->   [README.zh.md](README.zh.md). Both are cross-linked at the top.
+> - **`cua_snap_click`**: before it clicks, it checks that the point is not covered
+>   by another window (covered -> `POINT_COVERED`, nothing is clicked); after the click it
+>   says what changed (`changed` / `changed_elsewhere` / `unchanged`) and retries once by
+>   an offset when nothing changed (`expect_change=idempotent` only).
+> - **`cua_snap_click_named`**: finds a control by its accessible name and clicks it.
+>   The name is compared without its decoration, so `下载花名册` finds
+>   `📥 下载花名册（全部人员）`; two controls with the same name are never guessed
+>   (`AMBIGUOUS_TARGET` plus the candidates), and a control that is off the screen is
+>   not clicked (`NOT_VISIBLE` - scroll to it first).
+> - **`cua_snap_sequence`**: up to five clicks in a row, each one verified the same
+>   way; the first step that fails stops the walk, and the steps after it are not
+>   executed.
+> - **`cua_snap_wait_for`**: waits until a control with a given name shows up
+>   (`timeout_ms`); when it does not show up in time the answer says
+>   `WAIT_TIMEOUT`.
 >
-> Everything below is the 0.7.0 feature set, unchanged in behaviour.
+> **Controls can be addressed by their element id**: every candidate of a reading
+> carries one, so two controls with the same name can be told apart. The id lives
+> until the window is read again - a stale id answers `ELEMENT_ID_EXPIRED` instead of
+> quietly falling back to a guess by name. When the control supports the invoke pattern
+> it runs in the background (`manner: invoke`, the mouse stays where it is); otherwise it
+> is clicked by its point (`manner: point`).
+>
+> **Windows only**, like the rest of this plugin. Chromium-drawn interfaces (Feishu
+> for one) do not support the background invoke pattern: there the click lands by
+> point.
+>
+> The 0.7.x feature set below (bilingual UI, English-first readme) is unchanged in
+> behaviour.
 >
 > > **0.7.0: asks whether to install the official computer-control plugin**
 >
@@ -152,6 +174,58 @@ Limits you have to know:
 - Only the **physical** key counts. A simulated key press (for example the agent's own
   `press_key`) is not treated as a stop request, otherwise the agent could stop itself with a
   single key press.
+
+### cua_snap_click: a click that checks whether it landed
+
+The built-in Cua Driver clicks where the model points. Two things go wrong in practice: the
+point is covered by another window (a dialog, a notification, the upper half of a stacked pair), or
+the point is a few pixels off a small target. `cua_snap_click` is a second way to click, and it
+checks both.
+
+| Parameter | What it means |
+| --- | --- |
+| `x`, `y` | The point on the screen, in physical pixels. Required. |
+| `window_id` | The window you mean: a window handle (decimal or `0x` hex) or a piece of its title. Left out, the window under the point is the target. Name the window if you want the cover check: without it there is no "your window" to protect. |
+| `element_token` | Optional. The element token from the snapshot. The tool compares the element under the point with it and says so when they differ. |
+| `expect_change` | `idempotent` (the screen should change, and clicking twice is safe), `non_idempotent` (the screen should change, but a second click is not safe) or `none` (nothing should change). The default is `non_idempotent`. |
+
+What it does, in order:
+
+1. **It asks the system which window is on top at that point.** With a `window_id` the
+   named window is the ONLY window the call may click. If another window really covers
+   the point, the tool does **not** click: it answers `verification: covered`, `code:
+   POINT_COVERED` and the title of the window that is in the way. A `window_id` that does
+   not exist is an error of its own (`WINDOW_NOT_FOUND`), never a click on whatever happens
+   to be on top. Without a `window_id` the window under the point is the target, so a window
+   that is visible but not activated is a legitimate target (the answer says so).
+2. **It clicks and then looks.** Three answers, and every one of them is a fact about
+   the screen, not a guess:
+   - `changed` - the pixels AROUND the point, or the UIA state of the element under it,
+     moved: the click did exactly what it was aimed at.
+   - `changed_elsewhere` - those did not move, but the window as a whole did: this may
+     be the effect of the click landing somewhere else (a status bar, a label next to
+     the button). It counts as a success - it is **never** clicked again.
+   - `unchanged` - nothing moved at all: the click had no effect.
+   The cursor is moved to the point BEFORE the first reading, so a hover that only
+   repaints is not a change either.
+3. **It retries once, at most four pixels away.** Only when the answer is `unchanged`
+   (nothing moved at all) **and** the caller declared the target `idempotent`. A
+   `changed` or `changed_elsewhere` answer is never clicked twice. The offset stays inside the element under
+   the point, and the retry checks the element again: a different element means no second
+   click. A target that is not idempotent (a Send button, a payment) is never clicked
+   twice.
+4. **It checks the point once more right before the click**, so a window that appeared
+   in between does not receive the click; the answer says whether that check happened.
+5. **A wrong `element_token` is refused** (`ELEMENT_MISMATCH`): clicking would hit another
+   control. When the UIA state cannot be read, that is NOT a mismatch - it is simply unknown.
+
+The answer is an object: `verification` (`changed` / `unchanged` / `covered`), the code
+`POINT_COVERED` when the point was covered, the window that was in the way, and one entry per
+attempt with the point and whether the screen changed there.
+
+**What this tool is not:** it is not part of the official channel. The takeover banner and the
+goal gate still follow the official tools only; `cua_snap_click` is a plain click with a check
+around it.
 
 ## Install
 
@@ -320,21 +394,79 @@ If you see that line, check whether the official tool names changed and update
 only reads two timestamps and writes one line: it cannot affect the banner, the Esc stop or
 the desktop lease.
 
+### cua_snap_click_named: click a control by its name
+
+`cua_snap_click_named` finds a control by the text it shows and clicks it. The name
+must hit **exactly one** control:
+
+| What happens | The answer |
+| --- | --- |
+| Exactly one control carries the name | it is clicked at its centre; the answer carries `name`, `rect`, `unique: true` and the three tiers (`changed` / `changed_elsewhere` / `unchanged`) |
+| More than one control carries the name | nothing is clicked: `code: AMBIGUOUS_TARGET` plus the candidates (name, position, similarity, level). The tool never guesses. |
+| No control carries the name | nothing is clicked: `code: TARGET_NOT_FOUND` |
+| The named window does not exist | nothing is clicked: `code: WINDOW_NOT_FOUND` |
+| Every control with that name is off the screen | nothing is clicked: `code: NOT_VISIBLE` — scroll to the control first |
+
+The name is compared without its decoration: emoji, symbols and the text in
+brackets are dropped and the case is ignored, so `下载花名册` finds
+`📥 下载花名册（全部人员）`. The match has three levels — equal after the
+decoration is dropped, then one name holding the other, then a shared
+beginning — and only the best level counts. A control that is off the screen
+(`IsOffscreen`) is not a candidate: it cannot be clicked.
+
+The click itself is the click of `cua_snap_click`: the same cover check (a covered point
+is refused with `POINT_COVERED`), the same three tiers, and the same retry rule
+(only `expect_change=idempotent`, and only when the answer is `unchanged`).
+
+### cua_snap_sequence: up to five steps, one after the other
+
+`cua_snap_sequence` walks a short list of names. At most **five** steps: a longer list
+is refused with `TOO_MANY_STEPS` and nothing is executed. Every step is found by name,
+clicked, and checked with the same three tiers. `changed` and `changed_elsewhere` are a
+success and the walk continues; anything else (not found, ambiguous, covered, unchanged)
+stops the walk right there. The answer says which step stopped it and that the steps
+after it were **not** executed. The `verification` of the answer is the tier of the steps (a walk
+whose steps all changed somewhere else stays `changed_elsewhere`), and every step is listed with its
+own verdict. A step whose `expect_change` is not `idempotent` is never clicked twice.
+
+Both tools need a named window for the cover check: without `window_id` there is no
+"your window" to protect.
+
+### cua_snap_click_named: by element id, and cua_snap_wait_for: wait for a control
+
+> **Windows only**, like the rest of this plugin. Chromium-drawn interfaces (Feishu for
+> one) do not support the invoke pattern: there the click lands by point.
+
+`cua_snap_click_named` takes an `element_id` as well as a name. The ids come
+from a reading of the window - every candidate carries one - so two controls
+with the same name can be told apart. **An id lives until the window is read
+again**: after that the answer is `code: ELEMENT_ID_EXPIRED`, never a guess by
+name. When the control supports the invoke pattern it runs in the background
+(`manner: invoke`, the mouse stays where it is); otherwise it is clicked by its
+point (`manner: point`), with the same cover check and the same three tiers.
+
+`cua_snap_wait_for` waits until a control with a given name shows up
+(`timeout_ms`, default 5000). It answers `found: true` when the control is there
+and `code: WAIT_TIMEOUT` when it did not show up in time.
+
 ## Layout
 
 | File | Responsibility |
 | --- | --- |
 | `lib/index.js` | Listens to `tools/execute`, keeps the banner in sync, assembles it (session + action + goal), runs the **goal gate**, reads the session title from the host, drives the Windows picture layer, wires Esc to the stop logic, registers the `computer_control_goal` tool, and runs the official-tool-name self-check. |
 | `lib/goal.mjs` | Pure logic: goal summaries, human-vs-machine text, questions and complaints, the action-word table, banner assembly, session identity fallback, per-session goal state, **the gate decision and its wiring**, and message-source detection. Import-free, so plain node can test it. |
-| `lib/series.mjs` | Pure state machine: the takeover lease, in-flight call registration, the Esc stop and its scope. Import-free, so plain node can test it. |
+| `lib/snap-click.mjs` | Pure logic: the **cua_snap_click** tool - the argument shape, the retry offset (at most four pixels), the "did the screen change" decision, and the tool definition; plus the backend that talks to the Windows helper. Import-free, so plain node can test it. |
 | `lib/provider.mjs` | Pure logic: the **five states of the official channel** (available / installed-disabled / installed-inactive / missing / unknown), the install target (package name + version range), and the error codes of the install and restart answers. Import-free, so plain node can test it. |
 | `client.js` | The browser half: the **centred popup** when the official channel is missing (install / not now / go enable it / restart now), with a live re-read of the state; it renders **nothing at all** when the channel is there. |
 | `provider-bundle/` | The source of the **independently published** provider bundle (not part of this package); see [provider-bundle/README.md](provider-bundle/README.md). |
-| `scripts/windows-takeover.*` | The Windows picture layer (copied from upstream, see `THIRD_PARTY.md`). |
+| `scripts/windows-snap-click.*` | The native half of **cua_snap_click**: the window probe (which window is on top at a point), the pixel hash of the window and the UIA state of the element under the point, and the click itself. |
+| `scripts/manual-snap-click-scenario.ps1` | The real-machine scenario: two WinForms windows (a target and one that covers it), the points it prints, and the geometry file the runner reads. |
+| `scripts/manual-snap-click-run.mjs` | Drives that scenario with the real native helper and prints what the tool answered for every point. |
 | `tests/goal.test.mjs` | `node --test` unit tests (goal summaries, human-vs-machine text, action words, banner assembly, source filtering, the goal gate and its wiring). |
 | `tests/series.test.mjs` | `node --test` unit tests (lease and stop semantics). |
 | `tests/provider.test.mjs` | `node --test` unit tests (the **five states**, the install and restart error codes, **no fixed official version in the source**, the provider bundle is not published with this package). |
-| `scripts/check-package.mjs` | Checks what `npm pack` would ship (no `node_modules/`, no `*.tgz`, no `*.bak-*`, **no `provider-bundle/`**, no dependency on an official package, no fixed official version in the source, and the required files are in). |
+| `tests/snap-click.test.mjs` | `node --test` unit tests (a covered point is refused, a click that changes the screen, no change means no retry for a target that is not idempotent, one retry within four pixels, the tool definition). |
+ (no `node_modules/`, no `*.tgz`, no `*.bak-*`, **no `provider-bundle/`**, no dependency on an official package, no fixed official version in the source, and the required files are in). |
 | `docs/self-check.md` | The pre-release checklist. |
 
 ## Tests
@@ -347,11 +479,35 @@ node --check lib/index.js
 node --check lib/goal.mjs
 node --check lib/series.mjs
 node --check lib/provider.mjs
+node --check lib/snap-click.mjs
 node --test tests/goal.test.mjs
 node --test tests/series.test.mjs
 node --test tests/provider.test.mjs
+node --test tests/snap-click.test.mjs
+node --test tests/
 node scripts/check-package.mjs
 ```
+
+### The real-machine scenario (Windows only)
+
+The `cua_snap_click` behaviour is checked against two real windows, not only against
+mocks. The script starts them, prints the points and writes them to
+`%TEMP%\\snap-click-geometry.json`; the runner clicks those points with the real helper:
+
+```powershell
+powershell -NoProfile -STA -ExecutionPolicy Bypass -File scripts/manual-snap-click-scenario.ps1
+# in a second shell, once the two windows are up:
+node scripts/manual-snap-click-run.mjs
+```
+
+The runner prints, for every point: the `verification` (`changed` /
+`changed_elsewhere` / `unchanged` / `covered`), the `code`, whether the point was clicked,
+whether it was retried, the window that was in the way and whether the point was
+confirmed again before the click. The points are a button that repaints the pixels right
+at the point (`changed`), a button whose effect lands on a label next to it
+(`changed_elsewhere`), a static label (nothing happens -> `unchanged` plus one retry), a
+panel that repaints on hover but does nothing when clicked, and a point under the cover
+window (`covered`).
 
 CI (`.github/workflows/tests.yml`) runs the goal and series test files on Node 20 and on Node 22 for
 every push and pull request. `tests/provider.test.mjs` is not in that workflow yet — it has to be
